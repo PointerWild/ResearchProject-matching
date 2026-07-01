@@ -1,0 +1,6 @@
+ ∃s.(C⊓∃t._D_) ⊑ ∃r.A⊓B
+ _CC_ ⊑ ∃r.B ⊓ B
+ _D_ ⊑ ∃r.B
+∃s.(C⊓∃t._S_) ⊑ ∃r.D
+∃s.(B⊓∃t._CC_) ⊑ ∃t.C
+∃s.(B⊓∃t._AA_) ⊑ ∃t.C

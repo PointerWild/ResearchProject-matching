@@ -1,0 +1,50 @@
+/Users/roy/Library/Java/JavaVirtualMachines/openjdk-23.0.2/Contents/Home/bin/java -javaagent:/Applications/IntelliJ IDEA.app/Contents/lib/idea_rt.jar=57839 -Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -classpath /Users/roy/Desktop/RPtask/task1/out/production/task1 Main
+A⊑_X_                          → true
+A ⊑ B                          → true
+∃r.A ⊓ B ⊑ ∃s.(C ⊓ ∃t.D)       → true
+∃r.A ⊓ B ⊑ ∃s.(C ⊓ ∃t._D_)     → true
+∃r.A⊓B ⊑∃s.(C⊓∃t._D_)          → true
+∃r.a⊓B ⊑∃s.(C⊓∃t._D_)          → false
+a⊓B ⊑∃s.(C⊓∃t._D_)             → false
+⊓ A B ⊑ C                      → false
+A ⊑ B ⊓                        → false
+A ⊑ ∃r                         → false
+A ⊑ B ⊑ C                      → false
+=== Valid Gamma Lines ===
+∃r.A⊓B ⊑∃s.(C⊓∃t._D_)
+∃r.B ⊓ B ⊑ _CC_
+∃r.B ⊑ _D_
+∃r.D ⊑∃s.(C⊓∃t._S_)
+∃t.C ⊑∃s.(B⊓∃t._CC_)
+=== replaced left ground  Gamma Lines ===
+∃r.A⊓B ⊑∃s.(C⊓∃t.Tau)
+∃r.B ⊓ B ⊑ Tau
+∃r.B ⊑ Tau
+∃r.D ⊑∃s.(C⊓∃t.Tau)
+∃t.C ⊑∃s.(B⊓∃t.Tau)
+=== Valid TBox Lines ===
+A ⊑ B
+∃r.A ⊓ B ⊑ ∃s.(C ⊓ E)
+∃r.A ⊓ B ⊑ ∃s.(C ⊓ ∃t.D)
+=== Valid Gamma Lines ===
+ ∃s.(C⊓∃t._D_) ⊑ ∃r.A⊓B
+ _CC_ ⊑ ∃r.B ⊓ B
+ _D_ ⊑ ∃r.B
+∃s.(C⊓∃t._S_) ⊑ ∃r.D
+∃s.(B⊓∃t._CC_) ⊑ ∃t.C
+∃s.(B⊓∃t._AA_) ⊑ ∃t.C
+=== Valid TBox Lines ===
+A ⊑ B
+∃r.A ⊓ B ⊑ ∃s.(C ⊓ E)
+∃r.A ⊓ B ⊑ ∃s.(C ⊓ ∃t.D)
+=== Bottom ===
+A ⊓ B ⊓ ∃r.A ⊓ ∃s.(C ⊓ E) ⊓ ∃s.(C ⊓ ∃t.D) ⊓ ∃r.B ⊓ ∃r.D ⊓ ∃t.C
+=== replaced right ground Gamma Lines ===
+ ∃s.(C⊓∃t.(A ⊓ B ⊓ ∃r.A ⊓ ∃s.(C ⊓ E) ⊓ ∃s.(C ⊓ ∃t.D) ⊓ ∃r.B ⊓ ∃r.D ⊓ ∃t.C)) ⊑ ∃r.A⊓B
+ (A ⊓ B ⊓ ∃r.A ⊓ ∃s.(C ⊓ E) ⊓ ∃s.(C ⊓ ∃t.D) ⊓ ∃r.B ⊓ ∃r.D ⊓ ∃t.C) ⊑ ∃r.B ⊓ B
+ (A ⊓ B ⊓ ∃r.A ⊓ ∃s.(C ⊓ E) ⊓ ∃s.(C ⊓ ∃t.D) ⊓ ∃r.B ⊓ ∃r.D ⊓ ∃t.C) ⊑ ∃r.B
+∃s.(C⊓∃t.(A ⊓ B ⊓ ∃r.A ⊓ ∃s.(C ⊓ E) ⊓ ∃s.(C ⊓ ∃t.D) ⊓ ∃r.B ⊓ ∃r.D ⊓ ∃t.C)) ⊑ ∃r.D
+∃s.(B⊓∃t.(A ⊓ B ⊓ ∃r.A ⊓ ∃s.(C ⊓ E) ⊓ ∃s.(C ⊓ ∃t.D) ⊓ ∃r.B ⊓ ∃r.D ⊓ ∃t.C)) ⊑ ∃t.C
+∃s.(B⊓∃t.(A ⊓ B ⊓ ∃r.A ⊓ ∃s.(C ⊓ E) ⊓ ∃s.(C ⊓ ∃t.D) ⊓ ∃r.B ⊓ ∃r.D ⊓ ∃t.C)) ⊑ ∃t.C
+
+进程已结束，退出代码为 0
