@@ -27,21 +27,32 @@ public class EagerSolver {
      *         If no eager rule is applicable, returns true (nothing to do).
      */
     public boolean applyEager(List<SubsumptionPattern> gamma) throws FailureException {
-        // 1) Eager – variable on the right
+        SubsumptionPattern firstLeftVar = null;
+
         for (SubsumptionPattern sp : gamma) {
-            if (!sp.solved && sp.right.type == ConceptPatternNode.Type.VARIABLE) {
+            if (sp.solved) {
+                continue;
+            }
+
+            // 1) Eager – variable on the right
+            // C ⊑? X 优先处理
+            if (sp.right.type == ConceptPatternNode.Type.VARIABLE) {
                 return applyRightVarRule(sp, gamma);
             }
-        }
-        // 2) Eager – variable on the left
-        for (SubsumptionPattern sp : gamma) {
-            if (!sp.solved && sp.left.type == ConceptPatternNode.Type.VARIABLE) {
-                return applyLeftVarRule(sp, gamma);
+
+            // 2) Eager – variable on the left
+            // X ⊑? D 先记录，不马上 return
+            if (firstLeftVar == null && sp.left.type == ConceptPatternNode.Type.VARIABLE) {
+                firstLeftVar = sp;
             }
         }
+
+        if (firstLeftVar != null) {
+            return applyLeftVarRule(firstLeftVar, gamma);
+        }
         // no eager rule applicable
-        //return true;
-        return false;
+        return true;
+
     }
 
     /** Implements “Eager Solving – variable on the right” */

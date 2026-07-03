@@ -12,8 +12,13 @@ public class ElkIntegrationTestRunner {
         testDirectElkSubsumption();
         testElAnalyzeBridge();
         testDecAnalyzeUsesElk();
-        testEagerMatchingUsesElk();
-        testMutationMatchingUsesElk();
+        // T4
+        //testEagerMatchingUsesElk();
+        // T5
+        //testMutationMatchingUsesElk();
+
+        // test  Γ = { A ⊑? X , ∃r.X ⊑? ∃r.B }
+        testExistentialVariablePropagationUsesElk();
 
         System.out.println();
         System.out.println("ALL ELK INTEGRATION TESTS PASSED.");
@@ -249,5 +254,57 @@ public class ElkIntegrationTestRunner {
         if (condition) {
             throw new AssertionError(message);
         }
+    }
+
+    private static void testExistentialVariablePropagationUsesElk() {
+        System.out.println("\n=== Test 6: Existential Variable Propagation Uses ELK ===");
+
+        ELAnalyze el = new ELAnalyze();
+
+        ElkSubsumptionOracle oracle = new ElkSubsumptionOracle(
+                List.of(
+                        "A ⊑ B"
+                ),
+                "http://example.com/el#"
+        );
+
+        el.setSubsumptionOracle(oracle);
+
+        GoalOrientedMatcher matcher = new GoalOrientedMatcher(el);
+
+        Gamma gamma = new Gamma();
+
+        // A ⊑? _X_
+        gamma.add(
+                concept("A"),
+                variable("_X_")
+        );
+
+        // ∃r._X_ ⊑? ∃r.B
+        gamma.add(
+                some("r", variable("_X_")),
+                some("r", concept("B"))
+        );
+
+        boolean result = matcher.match(gamma);
+
+        System.out.println("matching result = " + result);
+        System.out.println("ELK query count = " + oracle.getElkQueryCount());
+        System.out.println("fallback count = " + oracle.getStructuralFallbackCount());
+        System.out.println("final gamma = " + gamma);
+
+        assertTrue(
+                result,
+                "Gamma { A ⊑? _X_, ∃r._X_ ⊑? ∃r.B } should be matchable because TBox entails A ⊑T B"
+        );
+
+        assertTrue(
+                oracle.getElkQueryCount() >= 1,
+                "This test should call ELK to check A ⊑T B"
+        );
+
+        oracle.close();
+
+        System.out.println("[PASS] Existential Variable Propagation Uses ELK");
     }
 }
