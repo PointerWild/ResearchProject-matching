@@ -18,7 +18,13 @@ public class ElkSubsumptionOracle implements SubsumptionOracle, AutoCloseable {
     private final OWLOntology ontology;
     private final OWLReasoner reasoner;
     private final String baseIri;
+
+    private int elkQueryCount = 0;
+    private int structuralFallbackCount = 0;
+
     private final SubsumptionOracle fallback = new StructuralSubsumptionOracle();
+
+
 
     public ElkSubsumptionOracle(Collection<String> tBoxLines, String baseIri) {
         try {
@@ -47,6 +53,7 @@ public class ElkSubsumptionOracle implements SubsumptionOracle, AutoCloseable {
         }
 
         if (containsVariable(left) || containsVariable(right)) {
+            structuralFallbackCount++;
             return fallback.subsumes(left, right);
         }
 
@@ -54,6 +61,12 @@ public class ElkSubsumptionOracle implements SubsumptionOracle, AutoCloseable {
         OWLClassExpression sup = toOwlExpression(right);
 
         OWLSubClassOfAxiom query = dataFactory.getOWLSubClassOfAxiom(sub, sup);
+
+        elkQueryCount++;
+        boolean result = reasoner.isEntailed(query);
+
+        System.out.printf("[ELK] %s ⊑ %s -> %b%n", left, right, result);
+
         return reasoner.isEntailed(query);
     }
 
@@ -139,4 +152,13 @@ public class ElkSubsumptionOracle implements SubsumptionOracle, AutoCloseable {
     public void close() {
         reasoner.dispose();
     }
+
+    public int getElkQueryCount() {
+        return elkQueryCount;
+    }
+
+    public int getStructuralFallbackCount() {
+        return structuralFallbackCount;
+    }
+
 }

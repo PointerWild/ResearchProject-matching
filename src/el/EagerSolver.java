@@ -40,11 +40,12 @@ public class EagerSolver {
             }
         }
         // no eager rule applicable
-        return true;
+        //return true;
+        return false;
     }
 
     /** Implements “Eager Solving – variable on the right” */
-    private boolean applyRightVarRule(SubsumptionPattern s, List<SubsumptionPattern> gamma) {
+    private boolean applyRightVarRule(SubsumptionPattern s, List<SubsumptionPattern> gamma) throws FailureException {
         ConceptPatternNode C = s.left;
         // find any X ⊑? D in Γ
         for (SubsumptionPattern sp : gamma) {
@@ -55,7 +56,10 @@ public class EagerSolver {
                 ConceptPatternNode D = sp.right;
                 // if C ⊑_T D fails, whole rule fails
                 if (!elAnalyze.subsumes(C, D)) {
-                    return false;
+                    //return false;
+                    throw new FailureException(
+                            "Eager right-variable rule failed: " + C + " ⊑T " + D + " is false"
+                    );
                 }
             }
         }
@@ -65,7 +69,7 @@ public class EagerSolver {
     }
 
     /** Implements “Eager Solving – variable on the left” */
-    private boolean applyLeftVarRule(SubsumptionPattern s, List<SubsumptionPattern> gamma) {
+    private boolean applyLeftVarRule(SubsumptionPattern s, List<SubsumptionPattern> gamma) throws FailureException{
         ConceptPatternNode D = s.right;
         // find any C ⊑? X in Γ
         for (SubsumptionPattern sp : gamma) {
@@ -76,7 +80,10 @@ public class EagerSolver {
                 ConceptPatternNode C = sp.left;
                 // if C ⊑_T D fails, whole rule fails
                 if (!elAnalyze.subsumes(C, D)) {
-                    return false;
+                    //return false;
+                    throw new FailureException(
+                            "Eager left-variable rule failed: " + C + " ⊑T " + D + " is false"
+                    );
                 }
             }
         }
