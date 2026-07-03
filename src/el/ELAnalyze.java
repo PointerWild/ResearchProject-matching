@@ -20,6 +20,8 @@ public class ELAnalyze {
     private List<String> tboxLines  = new ArrayList<>();
     private String bottom;
 
+    private SubsumptionOracle subsumptionOracle = new StructuralSubsumptionOracle();
+
     // Mock subsumption map
     private final Map<String, Boolean> mockMap = new HashMap<>();
 
@@ -33,26 +35,17 @@ public class ELAnalyze {
         return left.toString() + " ⊑ " + right.toString();
     }
 
-    /**
-     * 结构化 subsumption 判断：
-     * 1. 如果注册了 mockMap，则返回其值
-     * 2. 若右侧是 TOP 或 VARIABLE，一律 true
-     * 3. 否则按 toString() 完全相等判断
-     */
     public boolean subsumes(ConceptPatternNode left, ConceptPatternNode right) {
         String key = makeKey(left, right);
+
         if (mockMap.containsKey(key)) {
-            boolean r = mockMap.get(key);
-            System.out.printf("[MockSubsumes] %s → %b%n", key, r);
-            return r;
+            boolean result = mockMap.get(key);
+            System.out.printf("[MockSubsumes] %s → %b%n", key, result);
+            return result;
         }
-        if (right.type == ConceptPatternNode.Type.TOP ||
-                right.type == ConceptPatternNode.Type.VARIABLE) {
-            System.out.printf("[Structural] %s ⊑ %s → %b%n", left, right, true);
-            return true;
-        }
-        boolean result = left.toString().equals(right.toString());
-        System.out.printf("[Structural] %s ⊑ %s → %b%n", left, right, result);
+
+        boolean result = subsumptionOracle.subsumes(left, right);
+        System.out.printf("[SubsumptionOracle] %s → %b%n", key, result);
         return result;
     }
 
@@ -270,4 +263,16 @@ public class ELAnalyze {
         parts.add(s.substring(start));
         return parts;
     }
+
+    public void setSubsumptionOracle(SubsumptionOracle subsumptionOracle) {
+        if (subsumptionOracle == null) {
+            throw new IllegalArgumentException("subsumptionOracle cannot be null");
+        }
+        this.subsumptionOracle = subsumptionOracle;
+    }
+
+    public void enableElkReasoner(String baseIri) {
+        this.subsumptionOracle = new ElkSubsumptionOracle(this.tboxLines, baseIri);
+    }
+
 }
