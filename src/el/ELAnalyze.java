@@ -2,91 +2,375 @@ package el;
 
 import el.structure.ConceptPatternNode;
 
-import static el.structure.PatternDSL.*;
-
-import java.nio.file.*;
 import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.regex.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.AbstractMap.SimpleEntry;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+/**
+ * Provides the data and semantic-query services used by the EL matching
+ * implementation.
+ *
+ * <p>This class does not create or own an ELK reasoner. A real
+ * {@link SubsumptionOracle} must be created by the application entry point
+ * and injected before Algorithm 5.1 is started.
+ */
 public class ELAnalyze {
 
-    // —— 原有字段和方法 —— //
-    // Private storage for validated Gamma and TBox lines
     private List<String> gammaLines = new ArrayList<>();
-    private List<String> tboxLines  = new ArrayList<>();
+    private List<String> tboxLines = new ArrayList<>();
+
     private String bottom;
 
-    private SubsumptionOracle subsumptionOracle = new StructuralSubsumptionOracle();
+    /**
+     * Semantic subsumption provider.
+     *
+     * <p>In production this should normally be an
+     * {@link ElkSubsumptionOracle}.
+     */
+    private SubsumptionOracle subsumptionOracle;
 
-    // Mock subsumption map
-    private final Map<String, Boolean> mockMap = new HashMap<>();
+    /**
+     * Controls optional semantic-query output.
+     */
+    private boolean debug;
 
-    /** 注册一条结构化的 mock subsumption 规则 */
-    public void setMockSubsumption(ConceptPatternNode left, ConceptPatternNode right, boolean result) {
-        mockMap.put(makeKey(left, right), result);
+    /**
+     * Creates an analyzer without a configured semantic oracle.
+     *
+     * <p>The oracle must be supplied by calling
+     * {@link #setSubsumptionOracle(SubsumptionOracle)} before constructing
+     * {@link GoalOrientedMatcher}.
+     */
+    public ELAnalyze() {
+        this.debug = false;
     }
 
-    /** 生成 key，用于 mockMap 存取 */
-    private String makeKey(ConceptPatternNode left, ConceptPatternNode right) {
-        return left.toString() + " ⊑ " + right.toString();
+    /**
+     * Creates an analyzer with an already configured semantic oracle.
+     *
+     * @param subsumptionOracle semantic subsumption provider
+     */
+    public ELAnalyze(SubsumptionOracle subsumptionOracle) {
+        this();
+        setSubsumptionOracle(subsumptionOracle);
     }
 
-    public boolean subsumes(ConceptPatternNode left, ConceptPatternNode right) {
-        String key = makeKey(left, right);
+    // ---------------------------------------------------------------------
+    // Semantic subsumption
+    // ---------------------------------------------------------------------
 
-        if (mockMap.containsKey(key)) {
-            boolean result = mockMap.get(key);
-            System.out.printf("[MockSubsumes] %s → %b%n", key, result);
-            return result;
+    /**
+     * Checks semantic subsumption using the configured oracle.
+     *
+     * <p>This method does not implement structural matching, mocking or
+     * random results. Ground expressions are delegated to the configured
+     * semantic oracle.
+     *
+     * @param left  candidate subclass expression
+     * @param right candidate superclass expression
+     * @return true iff the configured oracle entails left ⊑ right
+     */
+    public boolean subsumes(
+            ConceptPatternNode left,
+            ConceptPatternNode right
+    ) {
+        Objects.requireNonNull(left, "left cannot be null");
+        Objects.requireNonNull(right, "right cannot be null");
+
+        SubsumptionOracle oracle = requireSubsumptionOracle();
+
+        boolean result = oracle.subsumes(left, right);
+
+        if (debug) {
+            System.out.printf(
+                    "[SemanticSubsumption] %s ⊑ %s -> %b%n",
+                    left,
+                    right,
+                    result
+            );
         }
 
-        boolean result = subsumptionOracle.subsumes(left, right);
-        System.out.printf("[SubsumptionOracle] %s → %b%n", key, result);
         return result;
     }
 
-    /** 旧的基于 String 的随机 mock 版本（保留） */
-    public boolean subsumes(String c, String d) {
-        boolean result = ThreadLocalRandom.current().nextBoolean();
-        System.out.printf("[Mock] Check subsumption: %s ⊑ %s → %b%n", c, d, result);
-        return result;
+    /**
+     * Parses two textual EL expressions and delegates the semantic check to
+     * the configured oracle.
+     *
+     * @param left  textual subclass expression
+     * @param right textual superclass expression
+     * @return true iff the configured oracle entails left ⊑ right
+     */
+    public boolean subsumes(
+            String left,
+            String right
+    ) {
+        Objects.requireNonNull(left, "left cannot be null");
+        Objects.requireNonNull(right, "right cannot be null");
+
+        return subsumes(
+                ConceptPatternNode.parse(left),
+                ConceptPatternNode.parse(right)
+        );
     }
 
-    // —— Gamma/TBox 加载与管理 —— //
+    /**
+     * Configures the semantic subsumption provider used by Algorithm 5.1.
+     *
+     * @param subsumptionOracle semantic subsumption provider
+     */
+    public void setSubsumptionOracle(
+            SubsumptionOracle subsumptionOracle
+    ) {
+        this.subsumptionOracle = Objects.requireNonNull(
+                subsumptionOracle,
+                "subsumptionOracle cannot be null"
+        );
+    }
 
+    /**
+     * Returns whether a semantic oracle has already been configured.
+     */
+    public boolean hasSubsumptionOracle() {
+        return subsumptionOracle != null;
+    }
+
+    /**
+     * Returns the configured semantic oracle.
+     *
+     * @throws IllegalStateException if no oracle has been configured
+     */
+    public SubsumptionOracle getSubsumptionOracle() {
+        return requireSubsumptionOracle();
+    }
+
+    private SubsumptionOracle requireSubsumptionOracle() {
+        if (subsumptionOracle == null) {
+            throw new IllegalStateException(
+                    "A real SubsumptionOracle must be configured before "
+                            + "checking semantic subsumption."
+            );
+        }
+
+        return subsumptionOracle;
+    }
+
+    public boolean isDebug() {
+        return debug;
+    }
+
+    public void setDebug(boolean debug) {
+        this.debug = debug;
+    }
+
+    // ---------------------------------------------------------------------
+    // Loading Gamma and TBox
+    // ---------------------------------------------------------------------
+
+    /**
+     * Loads Gamma expressions from a UTF-8 text file.
+     */
     public void loadGamma(String filePath) throws IOException {
-        List<String> all = Files.readAllLines(Paths.get(filePath));
-        gammaLines.clear();
-        for (String line : all) {
-            if (ELSyntaxChecker.isValid(line)) {
-                gammaLines.add(line);
-            } else {
-                System.err.println("Invalid Gamma syntax: '" + line + "'");
+        loadGamma(Paths.get(filePath));
+    }
+
+    /**
+     * Loads Gamma expressions from a UTF-8 text file.
+     */
+    public void loadGamma(Path filePath) throws IOException {
+        Objects.requireNonNull(filePath, "filePath cannot be null");
+
+        List<String> loaded = readMeaningfulLines(filePath);
+        List<String> validated = new ArrayList<>();
+
+        for (String line : loaded) {
+            validateGammaLine(line);
+            validated.add(line);
+        }
+
+        this.gammaLines = validated;
+    }
+
+    /**
+     * Loads ground TBox axioms from a UTF-8 text file.
+     */
+    public void loadTBox(String filePath) throws IOException {
+        loadTBox(Paths.get(filePath));
+    }
+
+    /**
+     * Loads ground TBox axioms from a UTF-8 text file.
+     */
+    public void loadTBox(Path filePath) throws IOException {
+        Objects.requireNonNull(filePath, "filePath cannot be null");
+
+        List<String> loaded = readMeaningfulLines(filePath);
+        List<String> validated = new ArrayList<>();
+
+        for (String line : loaded) {
+            validateTBoxLine(line);
+            validated.add(line);
+        }
+
+        this.tboxLines = validated;
+    }
+
+    private List<String> readMeaningfulLines(Path filePath)
+            throws IOException {
+
+        List<String> allLines = Files.readAllLines(
+                filePath,
+                StandardCharsets.UTF_8
+        );
+
+        List<String> result = new ArrayList<>();
+
+        for (String rawLine : allLines) {
+            if (rawLine == null) {
+                continue;
             }
+
+            String line = rawLine.trim();
+
+            if (line.isEmpty()
+                    || line.startsWith("#")
+                    || line.startsWith("//")) {
+                continue;
+            }
+
+            result.add(line);
+        }
+
+        return result;
+    }
+
+    private void validateGammaLine(String line) {
+        String[] parts = splitSubsumption(line, true);
+
+        ConceptPatternNode.parse(parts[0]);
+        ConceptPatternNode.parse(parts[1]);
+
+        /*
+         * ELSyntaxChecker historically understands ⊑ rather than ⊑?.
+         * Normalize only for syntax validation.
+         */
+        String normalized = line.replace("⊑?", "⊑");
+
+        if (!ELSyntaxChecker.isValid(normalized)) {
+            throw new IllegalArgumentException(
+                    "Invalid Gamma syntax: " + line
+            );
         }
     }
 
-    public void loadTBox(String filePath) throws IOException {
-        List<String> all = Files.readAllLines(Paths.get(filePath));
-        tboxLines.clear();
-        for (String line : all) {
-            if (ELSyntaxChecker.isValid(line)) {
-                tboxLines.add(line);
-            } else {
-                System.err.println("Invalid TBox syntax: '" + line + "'");
-            }
+    private void validateTBoxLine(String line) {
+        if (line.contains("⊑?")) {
+            throw new IllegalArgumentException(
+                    "TBox axioms must use ⊑ rather than ⊑?: " + line
+            );
+        }
+
+        String[] parts = splitSubsumption(line, false);
+
+        ConceptPatternNode left =
+                ConceptPatternNode.parse(parts[0]);
+
+        ConceptPatternNode right =
+                ConceptPatternNode.parse(parts[1]);
+
+        if (containsVariable(left) || containsVariable(right)) {
+            throw new IllegalArgumentException(
+                    "TBox axioms must be ground: " + line
+            );
+        }
+
+        if (!ELSyntaxChecker.isValid(line)) {
+            throw new IllegalArgumentException(
+                    "Invalid TBox syntax: " + line
+            );
         }
     }
+
+    /**
+     * Splits either C ⊑ D or C ⊑? D into two expressions.
+     */
+    private String[] splitSubsumption(
+            String line,
+            boolean allowQuestionMark
+    ) {
+        Objects.requireNonNull(line, "line cannot be null");
+
+        String normalized = line.trim();
+
+        if (allowQuestionMark) {
+            normalized = normalized.replace("⊑?", "⊑");
+        } else if (normalized.contains("⊑?")) {
+            throw new IllegalArgumentException(
+                    "Unexpected matching relation in TBox: " + line
+            );
+        }
+
+        int relationIndex = normalized.indexOf('⊑');
+
+        if (relationIndex < 0
+                || normalized.indexOf('⊑', relationIndex + 1) >= 0) {
+            throw new IllegalArgumentException(
+                    "A line must contain exactly one subsumption relation: "
+                            + line
+            );
+        }
+
+        String left =
+                normalized.substring(0, relationIndex).trim();
+
+        String right =
+                normalized.substring(relationIndex + 1).trim();
+
+        if (left.isEmpty() || right.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Both sides of a subsumption must be non-empty: "
+                            + line
+            );
+        }
+
+        return new String[]{left, right};
+    }
+
+    // ---------------------------------------------------------------------
+    // Gamma and TBox accessors
+    // ---------------------------------------------------------------------
 
     public List<String> getGammaLines() {
         return new ArrayList<>(gammaLines);
     }
 
     public void setGammaLines(List<String> lines) {
-        this.gammaLines = new ArrayList<>(lines);
+        Objects.requireNonNull(lines, "lines cannot be null");
+
+        List<String> validated = new ArrayList<>();
+
+        for (String line : lines) {
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+
+            String cleaned = line.trim();
+            validateGammaLine(cleaned);
+            validated.add(cleaned);
+        }
+
+        this.gammaLines = validated;
     }
 
     public List<String> getTBoxLines() {
@@ -94,8 +378,26 @@ public class ELAnalyze {
     }
 
     public void setTBoxLines(List<String> lines) {
-        this.tboxLines = new ArrayList<>(lines);
+        Objects.requireNonNull(lines, "lines cannot be null");
+
+        List<String> validated = new ArrayList<>();
+
+        for (String line : lines) {
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+
+            String cleaned = line.trim();
+            validateTBoxLine(cleaned);
+            validated.add(cleaned);
+        }
+
+        this.tboxLines = validated;
     }
+
+    // ---------------------------------------------------------------------
+    // Bottom handling retained from the original implementation
+    // ---------------------------------------------------------------------
 
     public String getBottom() {
         return bottom;
@@ -105,173 +407,277 @@ public class ELAnalyze {
         this.bottom = bottom;
     }
 
+    /**
+     * Retained for the existing left-ground preprocessing code.
+     */
     public void replaceLeftGroundGammaVariablesWithTop() {
-        Pattern varPattern = Pattern.compile("_[A-Z]+_");
+        Pattern variablePattern =
+                Pattern.compile("_[A-Z]+_");
+
         List<String> replaced = new ArrayList<>();
+
         for (String line : gammaLines) {
-            String newLine = varPattern.matcher(line).replaceAll("Tau");
-            replaced.add(newLine);
+            replaced.add(
+                    variablePattern
+                            .matcher(line)
+                            .replaceAll("Tau")
+            );
         }
+
         this.gammaLines = replaced;
     }
 
+    /**
+     * Retained for the existing right-ground preprocessing code.
+     */
     public void replaceRightGroundGammaVariablesWithBottom() {
         if (bottom == null) {
             computeBottom();
         }
-        Pattern varPattern = Pattern.compile("_[A-Z]+_");
+
+        Pattern variablePattern =
+                Pattern.compile("_[A-Z]+_");
+
         List<String> replaced = new ArrayList<>();
+
         for (String line : gammaLines) {
-            Matcher m = varPattern.matcher(line);
-            String newLine = m.replaceAll(Matcher.quoteReplacement("(" + bottom + ")"));
-            replaced.add(newLine);
+            Matcher matcher =
+                    variablePattern.matcher(line);
+
+            String replacement =
+                    "(" + bottom + ")";
+
+            replaced.add(
+                    matcher.replaceAll(
+                            Matcher.quoteReplacement(replacement)
+                    )
+            );
         }
+
         this.gammaLines = replaced;
     }
 
     public void computeBottom() {
-        Set<String> atoms = new LinkedHashSet<>();
+        Set<String> atoms =
+                new LinkedHashSet<>();
+
         for (String gci : tboxLines) {
-            String[] parts = gci.split("\\s*⊑\\s*");
-            if (parts.length == 2) {
-                atoms.addAll(extractTopLevelAtoms(parts[0].trim()));
-                atoms.addAll(extractTopLevelAtoms(parts[1].trim()));
-            }
+            String[] parts =
+                    splitSubsumption(gci, false);
+
+            atoms.addAll(
+                    extractTopLevelAtoms(parts[0])
+            );
+
+            atoms.addAll(
+                    extractTopLevelAtoms(parts[1])
+            );
         }
-        for (String gci : gammaLines) {
-            String[] parts = gci.split("\\s*⊑\\s*");
-            if (parts.length == 2) {
-                atoms.addAll(extractTopLevelAtoms(parts[1].trim()));
-            }
+
+        for (String constraint : gammaLines) {
+            String[] parts =
+                    splitSubsumption(constraint, true);
+
+            atoms.addAll(
+                    extractTopLevelAtoms(parts[1])
+            );
         }
-        this.bottom = String.join(" ⊓ ", atoms);
+
+        this.bottom =
+                String.join(" ⊓ ", atoms);
     }
 
+    // ---------------------------------------------------------------------
+    // Structured TBox access used by Algorithm 5.1
+    // ---------------------------------------------------------------------
+
     /**
-     * Returns all atoms occurring in the TBox:
-     * both the top-level atoms on the left-hand side of each GCI
-     * and the atom on the right-hand side.
+     * Returns the top-level atoms occurring in the TBox.
      */
     public List<ConceptPatternNode> getTBoxAtoms() {
-        List<ConceptPatternNode> atoms = new ArrayList<>();
+        List<ConceptPatternNode> atoms =
+                new ArrayList<>();
+
         for (String gci : tboxLines) {
-            String[] parts = gci.split("\\s*⊑\\s*");
-            if (parts.length != 2) continue;
-            // left side may be conjunction of atoms
-            List<String> leftStrs = splitTopLevel(parts[0].trim(), '⊓');
-            for (String s : leftStrs) {
-                atoms.add(parseAtomNode(s.trim()));
-            }
-            // right side is a single atom
-            atoms.add(parseAtomNode(parts[1].trim()));
+            String[] parts =
+                    splitSubsumption(gci, false);
+
+            ConceptPatternNode left =
+                    ConceptPatternNode.parse(parts[0]);
+
+            ConceptPatternNode right =
+                    ConceptPatternNode.parse(parts[1]);
+
+            atoms.addAll(
+                    topLevelAtoms(left)
+            );
+
+            atoms.addAll(
+                    topLevelAtoms(right)
+            );
         }
+
         return atoms;
     }
 
     /**
-     * Returns the list of GCIs, each as an entry
-     * (List of left atoms A₁…Aₖ, single right atom B).
+     * Returns the TBox GCIs in the form:
+     *
+     * <pre>
+     *     ([A1, ..., Ak], B)
+     * </pre>
+     *
+     * where the left side is represented as a list of top-level atoms.
      */
-    public List<SimpleEntry<List<ConceptPatternNode>, ConceptPatternNode>> getTBoxGCIs() {
-        List<SimpleEntry<List<ConceptPatternNode>, ConceptPatternNode>> result = new ArrayList<>();
+    public List<SimpleEntry<
+            List<ConceptPatternNode>,
+            ConceptPatternNode>> getTBoxGCIs() {
+
+        List<SimpleEntry<
+                List<ConceptPatternNode>,
+                ConceptPatternNode>> result =
+                new ArrayList<>();
+
         for (String gci : tboxLines) {
-            String[] parts = gci.split("\\s*⊑\\s*");
-            if (parts.length != 2) continue;
-            List<ConceptPatternNode> leftAtoms = new ArrayList<>();
-            for (String s : splitTopLevel(parts[0].trim(), '⊓')) {
-                leftAtoms.add(parseAtomNode(s.trim()));
+            String[] parts =
+                    splitSubsumption(gci, false);
+
+            ConceptPatternNode left =
+                    ConceptPatternNode.parse(parts[0]);
+
+            ConceptPatternNode right =
+                    ConceptPatternNode.parse(parts[1]);
+
+            if (right.type
+                    == ConceptPatternNode.Type.CONJUNCTION) {
+                throw new IllegalArgumentException(
+                        "The right side of a normalized TBox GCI "
+                                + "must be an atom: "
+                                + gci
+                );
             }
-            ConceptPatternNode rightAtom = parseAtomNode(parts[1].trim());
-            result.add(new SimpleEntry<>(leftAtoms, rightAtom));
+
+            result.add(
+                    new SimpleEntry<>(
+                            new ArrayList<>(
+                                    topLevelAtoms(left)
+                            ),
+                            right
+                    )
+            );
         }
+
         return result;
     }
 
-    // —— 以下为解析辅助方法 —— //
+    private List<ConceptPatternNode> topLevelAtoms(
+            ConceptPatternNode node
+    ) {
+        if (node.type
+                == ConceptPatternNode.Type.CONJUNCTION) {
+            return new ArrayList<>(
+                    node.conjunctions
+            );
+        }
 
-    /**
-     * Parse a single atom into a ConceptPatternNode,
-     * using PatternDSL factories.
-     */
-    private ConceptPatternNode parseAtomNode(String atom) {
-        atom = atom.trim();
-        // 纯大写概念名
-        if (atom.matches("[A-Z]+")) {
-            return concept(atom);
-        }
-        // ∃r.Filler
-        if (atom.startsWith("∃")) {
-            int dot = atom.indexOf('.');
-            String role = atom.substring(1, dot).trim();
-            String filler = atom.substring(dot + 1).trim();
-            ConceptPatternNode fillerNode = parseConjPattern(filler);
-            return some(role, fillerNode);
-        }
-        throw new IllegalArgumentException("Invalid atom in TBox: " + atom);
+        return Collections.singletonList(node);
     }
 
-    /**
-     * Parse a (possibly conjunctive) pattern into a ConceptPatternNode.
-     * Delegates to PatternDSL.and(...) or parseAtomNode(...)
-     */
-    private ConceptPatternNode parseConjPattern(String s) {
-        List<String> parts = splitTopLevel(s, '⊓');
-        if (parts.size() == 1) {
-            return parseAtomNode(parts.get(0));
-        }
-        // 多重顶层 ⊓ 时用 and(...)
-        List<ConceptPatternNode> children = new ArrayList<>();
-        for (String p : parts) {
-            children.add(parseAtomNode(p.trim()));
-        }
-        return and(children);
+    private boolean containsVariable(
+            ConceptPatternNode node
+    ) {
+        return switch (node.type) {
+            case VARIABLE ->
+                    true;
+
+            case TOP, CONCEPT_NAME ->
+                    false;
+
+            case EXISTENTIAL ->
+                    containsVariable(
+                            node.existentialFiller
+                    );
+
+            case CONJUNCTION ->
+                    node.conjunctions
+                            .stream()
+                            .anyMatch(
+                                    this::containsVariable
+                            );
+        };
     }
 
+    // ---------------------------------------------------------------------
+    // Existing textual bottom helper
+    // ---------------------------------------------------------------------
 
+    private List<String> extractTopLevelAtoms(
+            String description
+    ) {
+        List<String> atoms =
+                new ArrayList<>();
 
+        for (String term :
+                splitTopLevel(description, '⊓')) {
 
+            String cleaned =
+                    term.trim();
 
-    private List<String> extractTopLevelAtoms(String desc) {
-        List<String> atoms = new ArrayList<>();
-        for (String term : splitTopLevel(desc, '⊓')) {
-            String t = term.trim();
-            if (t.matches("[A-Z]+") || t.matches("∃[a-z]+\\..+")) {
-                atoms.add(t);
+            if (cleaned.matches("[A-Z]+")
+                    || cleaned.matches("∃[a-z]+\\..+")) {
+                atoms.add(cleaned);
             }
         }
+
         return atoms;
     }
 
+    private List<String> splitTopLevel(
+            String text,
+            char separator
+    ) {
+        List<String> parts =
+                new ArrayList<>();
 
-    /**
-     * Splits s at top-level occurrences of separator sep, ignoring parentheses.
-     * (This method was already present; reprinted here for clarity.)
-     */
-    private List<String> splitTopLevel(String s, char sep) {
-        List<String> parts = new ArrayList<>();
-        int depth = 0, start = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '(') depth++;
-            else if (c == ')') depth--;
-            else if (c == sep && depth == 0) {
-                parts.add(s.substring(start, i));
-                start = i + 1;
+        int depth = 0;
+        int start = 0;
+
+        for (int index = 0;
+             index < text.length();
+             index++) {
+
+            char current = text.charAt(index);
+
+            if (current == '(') {
+                depth++;
+            } else if (current == ')') {
+                depth--;
+
+                if (depth < 0) {
+                    throw new IllegalArgumentException(
+                            "Unbalanced parentheses: " + text
+                    );
+                }
+            } else if (current == separator
+                    && depth == 0) {
+                parts.add(
+                        text.substring(start, index)
+                );
+
+                start = index + 1;
             }
         }
-        parts.add(s.substring(start));
+
+        if (depth != 0) {
+            throw new IllegalArgumentException(
+                    "Unbalanced parentheses: " + text
+            );
+        }
+
+        parts.add(
+                text.substring(start)
+        );
+
         return parts;
     }
-
-    public void setSubsumptionOracle(SubsumptionOracle subsumptionOracle) {
-        if (subsumptionOracle == null) {
-            throw new IllegalArgumentException("subsumptionOracle cannot be null");
-        }
-        this.subsumptionOracle = subsumptionOracle;
-    }
-
-    public void enableElkReasoner(String baseIri) {
-        this.subsumptionOracle = new ElkSubsumptionOracle(this.tboxLines, baseIri);
-    }
-
 }
