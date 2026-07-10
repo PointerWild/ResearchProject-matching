@@ -9,6 +9,8 @@ import static el.structure.PatternDSL.concept;
 import static el.structure.PatternDSL.some;
 import static el.structure.PatternDSL.variable;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -20,9 +22,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *     ∃r._X_ ⊑? ∃r.B
  * }
  *
- * under the TBox:
+ * Positive TBox:
  *
  *     A ⊑ B
+ *
+ * Expected result:
+ *
+ *     true
  */
 class ExistentialVariablePropagationTest {
 
@@ -30,7 +36,197 @@ class ExistentialVariablePropagationTest {
             "http://example.com/variable-propagation-test#";
 
     /**
-     * First verify that Dec transforms:
+     * Verifies the syntax categories used by this project:
+     *
+     * _X_       -> VARIABLE
+     * A          -> CONCEPT_NAME
+     * ∃r._X_    -> EXISTENTIAL
+     * r          -> ROLE_NAME
+     * A ⊓ B      -> CONJUNCTION
+     *
+     * Also verifies structural equality:
+     *
+     * _X_ equals _X_
+     * _X_ does not equal X
+     */
+    @Test
+    void syntaxAndStructuralEqualityShouldWork() {
+
+        ConceptPatternNode parsedVariable =
+                ConceptPatternNode.parse("_X_");
+
+        ConceptPatternNode constructedVariable =
+                variable("_X_");
+
+        ConceptPatternNode differentVariable =
+                variable("_Y_");
+
+        ConceptPatternNode conceptX =
+                concept("X");
+
+        ConceptPatternNode parsedConcept =
+                ConceptPatternNode.parse("A");
+
+        ConceptPatternNode parsedExistential =
+                ConceptPatternNode.parse("∃r._X_");
+
+        ConceptPatternNode parsedConjunction =
+                ConceptPatternNode.parse("A ⊓ B");
+
+        /*
+         * 1. _X_ must be recognized as a variable.
+         */
+        assertEquals(
+                ConceptPatternNode.Type.VARIABLE,
+                parsedVariable.type,
+                "_X_ should be recognized as VARIABLE."
+        );
+
+        assertNotNull(
+                parsedVariable.variable,
+                "A VARIABLE node should contain a VariableName."
+        );
+
+        assertEquals(
+                "_X_",
+                parsedVariable.variable.name,
+                "The variable name should be _X_."
+        );
+
+        /*
+         * 2. Two independently created _X_ nodes should be structurally equal.
+         */
+        assertEquals(
+                parsedVariable,
+                constructedVariable,
+                "Two nodes representing _X_ should be equal."
+        );
+
+        assertEquals(
+                parsedVariable.hashCode(),
+                constructedVariable.hashCode(),
+                "Equal variable nodes must have equal hash codes."
+        );
+
+        /*
+         * 3. _X_ and _Y_ are different variables.
+         */
+        assertNotEquals(
+                parsedVariable,
+                differentVariable,
+                "_X_ and _Y_ should be different variables."
+        );
+
+        /*
+         * 4. _X_ and X are different.
+         *
+         * _X_ is a VARIABLE.
+         * X is a CONCEPT_NAME.
+         */
+        assertNotEquals(
+                parsedVariable,
+                conceptX,
+                "_X_ must not equal concept name X."
+        );
+
+        assertEquals(
+                ConceptPatternNode.Type.CONCEPT_NAME,
+                conceptX.type,
+                "X should be recognized as CONCEPT_NAME."
+        );
+
+        /*
+         * 5. A must be recognized as a concept name.
+         */
+        assertEquals(
+                ConceptPatternNode.Type.CONCEPT_NAME,
+                parsedConcept.type,
+                "A should be recognized as CONCEPT_NAME."
+        );
+
+        assertNotNull(
+                parsedConcept.conceptName,
+                "A CONCEPT_NAME node should contain a ConceptName."
+        );
+
+        assertEquals(
+                "A",
+                parsedConcept.conceptName.name,
+                "The concept name should be A."
+        );
+
+        /*
+         * 6. ∃r._X_ must be recognized as an existential restriction.
+         */
+        assertEquals(
+                ConceptPatternNode.Type.EXISTENTIAL,
+                parsedExistential.type,
+                "∃r._X_ should be recognized as EXISTENTIAL."
+        );
+
+        assertNotNull(
+                parsedExistential.role,
+                "An existential restriction should contain a role."
+        );
+
+        assertEquals(
+                "r",
+                parsedExistential.role.name,
+                "The role name should be r."
+        );
+
+        assertNotNull(
+                parsedExistential.existentialFiller,
+                "An existential restriction should contain a filler."
+        );
+
+        assertEquals(
+                ConceptPatternNode.Type.VARIABLE,
+                parsedExistential.existentialFiller.type,
+                "The filler of ∃r._X_ should be VARIABLE."
+        );
+
+        assertEquals(
+                "_X_",
+                parsedExistential.existentialFiller.variable.name,
+                "The existential filler variable should be _X_."
+        );
+
+        /*
+         * 7. A ⊓ B must be recognized as a conjunction.
+         */
+        assertEquals(
+                ConceptPatternNode.Type.CONJUNCTION,
+                parsedConjunction.type,
+                "A ⊓ B should be recognized as CONJUNCTION."
+        );
+
+        assertNotNull(
+                parsedConjunction.conjunctions,
+                "A conjunction should contain a list of operands."
+        );
+
+        assertEquals(
+                2,
+                parsedConjunction.conjunctions.size(),
+                "A ⊓ B should contain exactly two operands."
+        );
+
+        assertEquals(
+                concept("A"),
+                parsedConjunction.conjunctions.get(0),
+                "The first conjunction operand should be A."
+        );
+
+        assertEquals(
+                concept("B"),
+                parsedConjunction.conjunctions.get(1),
+                "The second conjunction operand should be B."
+        );
+    }
+
+    /**
+     * Verifies that Dec transforms:
      *
      *     ∃r._X_ ⊑? ∃r.B
      *
@@ -42,7 +238,9 @@ class ExistentialVariablePropagationTest {
     void decShouldGenerateVariableSubsumption() {
 
         List<String> tBoxLines =
-                List.of("A ⊑ B");
+                List.of(
+                        "A ⊑ B"
+                );
 
         try (
                 ElkSubsumptionOracle elk =
@@ -63,7 +261,9 @@ class ExistentialVariablePropagationTest {
             );
 
             DecAnalyze dec =
-                    new DecAnalyze(analyze);
+                    new DecAnalyze(
+                            analyze
+                    );
 
             ConceptPatternNode left =
                     some(
@@ -78,7 +278,10 @@ class ExistentialVariablePropagationTest {
                     );
 
             DecAnalyze.DecResult result =
-                    dec.dec(left, right);
+                    dec.dec(
+                            left,
+                            right
+                    );
 
             assertNotNull(
                     result,
@@ -87,7 +290,13 @@ class ExistentialVariablePropagationTest {
 
             assertTrue(
                     result.success,
-                    "Dec should succeed for identical roles."
+                    "Dec should succeed for existential restrictions "
+                            + "with the same role."
+            );
+
+            assertNotNull(
+                    result.subGoals,
+                    "A successful Dec result should contain a sub-goal set."
             );
 
             assertEquals(
@@ -102,32 +311,73 @@ class ExistentialVariablePropagationTest {
                             .next();
 
             assertEquals(
+                    ConceptPatternNode.Type.VARIABLE,
+                    subGoal.getKey().type,
+                    "The generated left side should have VARIABLE type."
+            );
+
+            assertEquals(
+                    "_X_",
+                    subGoal.getKey().variable.name,
+                    "The generated variable should be _X_."
+            );
+
+            assertEquals(
                     variable("_X_"),
                     subGoal.getKey(),
-                    "The generated left side should be _X_."
+                    "The generated left side should be structurally equal "
+                            + "to variable _X_."
+            );
+
+            assertEquals(
+                    ConceptPatternNode.Type.CONCEPT_NAME,
+                    subGoal.getValue().type,
+                    "The generated right side should have CONCEPT_NAME type."
+            );
+
+            assertEquals(
+                    "B",
+                    subGoal.getValue().conceptName.name,
+                    "The generated concept name should be B."
             );
 
             assertEquals(
                     concept("B"),
                     subGoal.getValue(),
-                    "The generated right side should be B."
+                    "The generated right side should be structurally equal "
+                            + "to concept B."
             );
         }
     }
 
     /**
-     * End-to-end Algorithm 5.1 test.
+     * Positive end-to-end Algorithm 5.1 test.
+     *
+     * Initial Gamma:
+     *
+     *     A ⊑? _X_
+     *     ∃r._X_ ⊑? ∃r.B
      *
      * Expected execution:
      *
-     * 1. Decompose ∃r._X_ ⊑? ∃r.B into _X_ ⊑? B.
-     * 2. Apply the eager rule to:
+     * 1. Decomposition transforms:
+     *
+     *        ∃r._X_ ⊑? ∃r.B
+     *
+     *    into:
+     *
+     *        _X_ ⊑? B
+     *
+     * 2. Eager solving connects:
      *
      *        A ⊑? _X_
      *        _X_ ⊑? B
      *
-     * 3. Ask ELK whether TBox entails A ⊑ B.
-     * 4. Return true.
+     * 3. ELK checks:
+     *
+     *        TBox |= A ⊑ B
+     *
+     * 4. The matching problem succeeds.
      */
     @Test
     void matcherShouldExistForExistentialVariablePropagation() {
@@ -144,9 +394,6 @@ class ExistentialVariablePropagationTest {
                                 BASE_IRI
                         )
         ) {
-            /*
-             * ELAnalyze stores the same TBox that is loaded into ELK.
-             */
             ELAnalyze analyze =
                     new ELAnalyze();
 
@@ -158,12 +405,6 @@ class ExistentialVariablePropagationTest {
                     elk
             );
 
-            /*
-             * Gamma = {
-             *     A ⊑? _X_,
-             *     ∃r._X_ ⊑? ∃r.B
-             * }
-             */
             Gamma gamma =
                     new Gamma();
 
@@ -186,9 +427,11 @@ class ExistentialVariablePropagationTest {
             int axiomsBefore =
                     elk.getAxiomCount();
 
+            int queriesBefore =
+                    elk.getElkQueryCount();
+
             /*
-             * The real ELK oracle must be injected before the matcher
-             * is constructed.
+             * ELK must be injected before constructing the matcher.
              */
             GoalOrientedMatcher matcher =
                     new GoalOrientedMatcher(
@@ -196,7 +439,9 @@ class ExistentialVariablePropagationTest {
                     );
 
             boolean hasMatcher =
-                    matcher.match(gamma);
+                    matcher.match(
+                            gamma
+                    );
 
             assertTrue(
                     hasMatcher,
@@ -215,8 +460,103 @@ class ExistentialVariablePropagationTest {
             );
 
             assertTrue(
-                    elk.getElkQueryCount() > 0,
+                    elk.getElkQueryCount() > queriesBefore,
                     "Algorithm 5.1 should perform at least one ELK query."
+            );
+        }
+    }
+
+    /**
+     * Negative end-to-end test.
+     *
+     * Gamma remains:
+     *
+     *     A ⊑? _X_
+     *     ∃r._X_ ⊑? ∃r.B
+     *
+     * But the TBox contains only:
+     *
+     *     C ⊑ B
+     *
+     * Therefore:
+     *
+     *     TBox does not entail A ⊑ B
+     *
+     * and the matching problem must fail.
+     */
+    @Test
+    void matcherShouldFailWhenTBoxDoesNotEntailASubsumedByB() {
+
+        List<String> tBoxLines =
+                List.of(
+                        "C ⊑ B"
+                );
+
+        try (
+                ElkSubsumptionOracle elk =
+                        new ElkSubsumptionOracle(
+                                tBoxLines,
+                                BASE_IRI
+                        )
+        ) {
+            ELAnalyze analyze =
+                    new ELAnalyze();
+
+            analyze.setTBoxLines(
+                    tBoxLines
+            );
+
+            analyze.setSubsumptionOracle(
+                    elk
+            );
+
+            Gamma gamma =
+                    new Gamma();
+
+            gamma.add(
+                    concept("A"),
+                    variable("_X_")
+            );
+
+            gamma.add(
+                    some(
+                            "r",
+                            variable("_X_")
+                    ),
+                    some(
+                            "r",
+                            concept("B")
+                    )
+            );
+
+            int axiomsBefore =
+                    elk.getAxiomCount();
+
+            GoalOrientedMatcher matcher =
+                    new GoalOrientedMatcher(
+                            analyze
+                    );
+
+            boolean hasMatcher =
+                    matcher.match(
+                            gamma
+                    );
+
+            assertFalse(
+                    hasMatcher,
+                    """
+                    Matching should fail because:
+                    1. Dec generates _X_ ⊑? B;
+                    2. Eager solving must check A ⊑ B;
+                    3. The TBox contains only C ⊑ B;
+                    4. Therefore TBox does not entail A ⊑ B.
+                    """
+            );
+
+            assertEquals(
+                    axiomsBefore,
+                    elk.getAxiomCount(),
+                    "Gamma constraints must not be added to the ontology."
             );
         }
     }
