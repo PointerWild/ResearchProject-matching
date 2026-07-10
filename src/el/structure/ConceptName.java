@@ -1,24 +1,32 @@
 package el.structure;
 
 import java.util.Objects;
+import java.util.regex.Pattern;
 
-/**
- * Name of an EL concept.
- *
- * Examples:
- *     A
- *     B
- *     PERSON
- */
 public final class ConceptName {
+
+    /**
+     * Must start with an uppercase letter.
+     * Remaining characters may be uppercase letters,
+     * lowercase letters, or digits.
+     */
+    public static final String REGEX =
+            "[A-Z][A-Za-z0-9]*";
+
+    private static final Pattern PATTERN =
+            Pattern.compile(REGEX);
 
     public final String name;
 
     public ConceptName(String name) {
         if (name == null
-                || !name.matches("[A-Z]+")) {
+                || !PATTERN.matcher(name).matches()) {
+
             throw new IllegalArgumentException(
-                    "Invalid concept name: " + name
+                    "Invalid concept name: "
+                            + name
+                            + ". Expected pattern: "
+                            + REGEX
             );
         }
 
@@ -30,9 +38,6 @@ public final class ConceptName {
         return name;
     }
 
-    /**
-     * Two concept names are equal when their textual names are equal.
-     */
     @Override
     public boolean equals(Object object) {
         if (this == object) {

@@ -117,13 +117,50 @@ public class ConceptPatternNode {
                 return Tau();
             }
             char c = peek();
+
+            /*
+             * Variable:
+             *
+             * _[A-Z][A-Za-z0-9]*_
+             *
+             * Examples:
+             *
+             * _X_
+             * _Xs_
+             * _Xsasda1_
+             */
             if (c == '_') {
-                String tok = parseRegex("_[A-Z]+_");
-                return fromVariable(new VariableName(tok));
+                String tok =
+                        parseRegex(
+                                VariableName.REGEX
+                        );
+
+                return fromVariable(
+                        new VariableName(tok)
+                );
             }
+
+            /*
+             * Concept name:
+             *
+             * [A-Z][A-Za-z0-9]*
+             *
+             * Examples:
+             *
+             * A
+             * A1
+             * Abc1
+             * Person123
+             */
             if (Character.isUpperCase(c)) {
-                String tok = parseRegex("[A-Z]+");
-                return fromConcept(new ConceptName(tok));
+                String tok =
+                        parseRegex(
+                                ConceptName.REGEX
+                        );
+
+                return fromConcept(
+                        new ConceptName(tok)
+                );
             }
             if (match('∃')) {
                 String roleName = parseRegex("[a-z]+");

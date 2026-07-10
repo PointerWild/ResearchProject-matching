@@ -57,12 +57,44 @@ public class GoalOrientedMatcher {
 
 
     /**
-     * Entry point: try to match the initial Γ₀.
-     * @param gamma the normalized, initial Gamma
-     * @return true if there exists a matching run (matcher), false otherwise
+     * Normalizes the initial Gamma and then executes Algorithm 5.1.
+     *
+     * @param gamma original, possibly non-normalized matching problem
+     * @return true iff the matching problem has a matcher
      */
-    public boolean match(Gamma gamma) {
-        return dfs(gamma);
+    public boolean match(
+            Gamma gamma
+    ) {
+        Objects.requireNonNull(
+                gamma,
+                "gamma cannot be null"
+        );
+
+        GammaNormalizer normalizer =
+                new GammaNormalizer(
+                        elAnalyze
+                );
+
+        GammaNormalizationResult normalization =
+                normalizer.normalize(
+                        gamma
+                );
+
+        /*
+         * A false ground-ground constraint was discovered.
+         */
+        if (!normalization.isMatchable()) {
+            return false;
+        }
+
+        /*
+         * DFS receives only normalized constraints.
+         *
+         * The original Gamma is not modified.
+         */
+        return dfs(
+                normalization.getNormalizedGamma()
+        );
     }
 
     /**

@@ -1,27 +1,51 @@
 package el.structure;
 
 import java.util.Objects;
+import java.util.regex.Pattern;
 
-/**
- * Name of a matching variable.
- *
- * Examples:
- *     _X_
- *     _YY_
- */
 public final class VariableName {
 
+    /**
+     * Variable token:
+     *
+     * _X_
+     * _Xs_
+     * _Xsasda1_
+     */
+    public static final String REGEX =
+            "_[A-Z][A-Za-z0-9]*_";
+
+    private static final Pattern PATTERN =
+            Pattern.compile(REGEX);
+
+    /**
+     * Complete token including underscores.
+     */
     public final String name;
 
     public VariableName(String name) {
         if (name == null
-                || !name.matches("_[A-Z]+_")) {
+                || !PATTERN.matcher(name).matches()) {
+
             throw new IllegalArgumentException(
-                    "Invalid variable name: " + name
+                    "Invalid variable name: "
+                            + name
+                            + ". Expected pattern: "
+                            + REGEX
             );
         }
 
         this.name = name;
+    }
+
+    /**
+     * _Xsasda1_ -> Xsasda1
+     */
+    public String getIdentifier() {
+        return name.substring(
+                1,
+                name.length() - 1
+        );
     }
 
     @Override
@@ -29,12 +53,6 @@ public final class VariableName {
         return name;
     }
 
-    /**
-     * Two variable names are equal when their textual names are equal.
-     *
-     * _X_ equals _X_
-     * _X_ does not equal _Y_
-     */
     @Override
     public boolean equals(Object object) {
         if (this == object) {

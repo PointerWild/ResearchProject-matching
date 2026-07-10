@@ -1,5 +1,8 @@
 package el;
 
+import el.structure.ConceptName;
+import el.structure.VariableName;
+
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
@@ -63,8 +66,8 @@ public class ELSyntaxChecker {
 
     /**
      * el.structure.Atom := 'Tau'
-     *       | Variable  '_[A-Z]+_'
-     *       | el.structure.ConceptName  '[A-Z]+'
+     *       | Variable  '_[A-Z][A-Za-z0-9]*_'
+     *       | el.structure.ConceptName  [A-Z][A-Za-z0-9]*'
      *       | '∃' Role '.' Conj
      *       | '(' Conj ')'
      */
@@ -76,12 +79,18 @@ public class ELSyntaxChecker {
         }
         // Variable: _X_, _YY_, etc.
         if (peek() == '_') {
-            parseRegex("_[A-Z]+_");
+            parseRegex(
+                    VariableName.REGEX
+            );
+
             return;
         }
         // el.structure.ConceptName: A, B, C...
         if (Character.isUpperCase(peek())) {
-            parseRegex("[A-Z]+");
+            parseRegex(
+                    ConceptName.REGEX
+            );
+
             return;
         }
         // ∃r. pattern

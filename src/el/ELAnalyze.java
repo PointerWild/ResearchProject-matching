@@ -1,5 +1,6 @@
 package el;
 
+import el.structure.ConceptName;
 import el.structure.ConceptPatternNode;
 
 import java.io.IOException;
@@ -623,10 +624,15 @@ public class ELAnalyze {
             String cleaned =
                     term.trim();
 
-            if (cleaned.matches("[A-Z]+")
-                    || cleaned.matches("∃[a-z]+\\..+")) {
+            if (cleaned.matches(
+                    ConceptName.REGEX
+            )
+                    || cleaned.matches(
+                    "∃[a-z]+\\..+"
+            )) {
                 atoms.add(cleaned);
             }
+
         }
 
         return atoms;
