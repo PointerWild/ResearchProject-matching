@@ -65,7 +65,7 @@ public class MutationRule {
 
             // 2) for each Aη，at least find one Ci which decompose successfully
             boolean mappingOK = true;
-            List<SimpleEntry<ConceptPatternNode,ConceptPatternNode>> allSubGoals = new ArrayList<>();
+            List<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> allSubGoals = new ArrayList<>();
             for (ConceptPatternNode A : As) {
                 boolean someOK = false;
                 for (ConceptPatternNode C : cis) {
@@ -117,7 +117,7 @@ public class MutationRule {
     public static List<Gamma> applyAll(
             SubsumptionPattern sp,
             Gamma gamma,
-            BiFunction<ConceptPatternNode,ConceptPatternNode,DecAnalyze.DecResult> decFunc,
+            BiFunction<ConceptPatternNode, ConceptPatternNode,DecAnalyze.DecResult> decFunc,
             Map<ConceptPatternNode,List<List<ConceptPatternNode>>> gciByRight,
             ELAnalyze elAnalyze) {
 
@@ -129,7 +129,7 @@ public class MutationRule {
         }
 
         List<ConceptPatternNode> cis    = sp.left.conjunctions;  // C1…Cn
-        ConceptPatternNode         D    = sp.right;
+        ConceptPatternNode D    = sp.right;
         int                        idx  = gamma.getAll().indexOf(sp);
 
         // Fetch only the GCIs whose right side is D
@@ -137,7 +137,7 @@ public class MutationRule {
 
         for (List<ConceptPatternNode> As : candidateLists) {
             // 1) For each Aη in this list, find some Ci that can decompose
-            List<SimpleEntry<ConceptPatternNode,ConceptPatternNode>> allSubGoals = new ArrayList<>();
+            List<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> allSubGoals = new ArrayList<>();
             boolean mappingOK = true;
 
             for (ConceptPatternNode A : As) {

@@ -6,10 +6,7 @@ import el.structure.*;
 import el.structure.ConceptPattern;
 import static el.structure.PatternDSL.*;
 import java.io.IOException;
-import java.util.Set;
-import java.util.Map;
 import java.util.AbstractMap.SimpleEntry;
-import el.ElkChecker;
 
 
 

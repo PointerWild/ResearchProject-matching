@@ -50,8 +50,8 @@ public class DecompositionRule {
                 //return false;
             }
             // success: add each subGoal to gamma
-            Set<SimpleEntry<ConceptPatternNode,ConceptPatternNode>> subGoals = res.subGoals;
-            for (SimpleEntry<ConceptPatternNode,ConceptPatternNode> e : subGoals) {
+            Set<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> subGoals = res.subGoals;
+            for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : subGoals) {
                 gamma.add(e.getKey(), e.getValue());
             }
             // mark the original pattern solved

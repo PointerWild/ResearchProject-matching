@@ -1,7 +1,6 @@
 // File: Subsumption.java
 package el.structure;
 
-import el.structure.ConceptPatternNode;
 import java.util.Objects;
 
 /**

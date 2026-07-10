@@ -1,8 +1,7 @@
 package el;
 
 import el.structure.ConceptPatternNode;
-import el.structure.ConceptName;
-import el.structure.RoleName;
+
 import static el.structure.PatternDSL.*;
 
 import java.nio.file.*;
@@ -173,8 +172,8 @@ public class ELAnalyze {
      * Returns the list of GCIs, each as an entry
      * (List of left atoms A₁…Aₖ, single right atom B).
      */
-    public List<SimpleEntry<List<ConceptPatternNode>,ConceptPatternNode>> getTBoxGCIs() {
-        List<SimpleEntry<List<ConceptPatternNode>,ConceptPatternNode>> result = new ArrayList<>();
+    public List<SimpleEntry<List<ConceptPatternNode>, ConceptPatternNode>> getTBoxGCIs() {
+        List<SimpleEntry<List<ConceptPatternNode>, ConceptPatternNode>> result = new ArrayList<>();
         for (String gci : tboxLines) {
             String[] parts = gci.split("\\s*⊑\\s*");
             if (parts.length != 2) continue;

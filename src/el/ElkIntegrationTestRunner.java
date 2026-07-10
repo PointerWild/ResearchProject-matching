@@ -20,6 +20,7 @@ public class ElkIntegrationTestRunner {
         // test  Γ = { A ⊑? X , ∃r.X ⊑? ∃r.B }
         testExistentialVariablePropagationUsesElk();
 
+
         System.out.println();
         System.out.println("ALL ELK INTEGRATION TESTS PASSED.");
     }

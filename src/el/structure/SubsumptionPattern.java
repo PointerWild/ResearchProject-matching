@@ -1,7 +1,5 @@
 package el.structure;
 
-import el.structure.ConceptPatternNode;
-
 /**
  * A subsumption in Γ that can be marked 'solved' by eager rules.
  * Inherits the basic left/right from Subsumption.

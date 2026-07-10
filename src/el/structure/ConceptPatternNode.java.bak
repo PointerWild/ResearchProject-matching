@@ -12,34 +12,34 @@ public class ConceptPatternNode {
     public final Type type;
     public ConceptName conceptName;
     public VariableName variable;
-    public List<ConceptPatternNode> conjunctions;
+    public List<ConceptPatternNode_1> conjunctions;
     public RoleName role;
-    public ConceptPatternNode existentialFiller;
+    public ConceptPatternNode_1 existentialFiller;
 
-    public static ConceptPatternNode Tau() {
-        return new ConceptPatternNode(Type.TOP);
+    public static ConceptPatternNode_1 Tau() {
+        return new ConceptPatternNode_1(Type.TOP);
     }
 
-    public static ConceptPatternNode fromConcept(ConceptName name) {
-        ConceptPatternNode desc = new ConceptPatternNode(Type.CONCEPT_NAME);
+    public static ConceptPatternNode_1 fromConcept(ConceptName name) {
+        ConceptPatternNode_1 desc = new ConceptPatternNode_1(Type.CONCEPT_NAME);
         desc.conceptName = name;
         return desc;
     }
 
-    public static ConceptPatternNode fromVariable(VariableName var) {
-        ConceptPatternNode desc = new ConceptPatternNode(Type.VARIABLE);
+    public static ConceptPatternNode_1 fromVariable(VariableName var) {
+        ConceptPatternNode_1 desc = new ConceptPatternNode_1(Type.VARIABLE);
         desc.variable = var;
         return desc;
     }
 
-    public static ConceptPatternNode conj(List<ConceptPatternNode> parts) {
-        ConceptPatternNode desc = new ConceptPatternNode(Type.CONJUNCTION);
+    public static ConceptPatternNode_1 conj(List<ConceptPatternNode_1> parts) {
+        ConceptPatternNode_1 desc = new ConceptPatternNode_1(Type.CONJUNCTION);
         desc.conjunctions = parts;
         return desc;
     }
 
-    public static ConceptPatternNode exists(RoleName role, ConceptPatternNode filler) {
-        ConceptPatternNode desc = new ConceptPatternNode(Type.EXISTENTIAL);
+    public static ConceptPatternNode_1 exists(RoleName role, ConceptPatternNode_1 filler) {
+        ConceptPatternNode_1 desc = new ConceptPatternNode_1(Type.EXISTENTIAL);
         desc.role = role;
         desc.existentialFiller = filler;
         return desc;
@@ -65,7 +65,7 @@ public class ConceptPatternNode {
     /**
      * Parse an EL‐pattern string (possibly a conjunction) into a node.
      */
-    public static ConceptPatternNode parse(String s) {
+    public static ConceptPatternNode_1 parse(String s) {
         return new Parser(s.trim()).parseConj();
     }
 
@@ -79,9 +79,9 @@ public class ConceptPatternNode {
         }
 
         // Parse conjunction := Atom ('⊓' Atom)*
-        ConceptPatternNode parseConj() {
+        ConceptPatternNode_1 parseConj() {
             skipWS();
-            List<ConceptPatternNode> parts = new ArrayList<>();
+            List<ConceptPatternNode_1> parts = new ArrayList<>();
             parts.add(parseAtom());
             skipWS();
             while (match('⊓')) {
@@ -96,7 +96,7 @@ public class ConceptPatternNode {
         }
 
         // Parse Atom := 'Tau' | variable | concept name | ∃r.Conj | '(' Conj ')'
-        ConceptPatternNode parseAtom() {
+        ConceptPatternNode_1 parseAtom() {
             skipWS();
             if (matchLiteral("Tau")) {
                 return Tau();
@@ -116,12 +116,12 @@ public class ConceptPatternNode {
             if (match('∃')) {
                 String roleName = parseRegex("[a-z]+");
                 expect('.');
-                ConceptPatternNode filler = parseConj();
+                ConceptPatternNode_1 filler = parseConj();
                 return exists(new RoleName(roleName), filler);
             }
             // parenthesized
             if (match('(')) {
-                ConceptPatternNode inside = parseConj();
+                ConceptPatternNode_1 inside = parseConj();
                 skipWS();
                 expect(')');
                 return inside;

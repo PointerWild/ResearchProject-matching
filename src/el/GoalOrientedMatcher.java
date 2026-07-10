@@ -24,7 +24,7 @@ public class GoalOrientedMatcher {
     //Caches every Dec(c, a) call, so repeated decompositions aren’t recomputed.
     //Produces one Gamma per feasible (A₁…Aₖ ⊑ₜ B) branch, each with its own fresh copy of the subgoals and solved marking.
     private final Map<ConceptPatternNode,List<List<ConceptPatternNode>>> gciByRight;
-    private final BiFunction<ConceptPatternNode,ConceptPatternNode,DecAnalyze.DecResult> decFunc;
+    private final BiFunction<ConceptPatternNode, ConceptPatternNode,DecAnalyze.DecResult> decFunc;
 
 
     public GoalOrientedMatcher(ELAnalyze elAnalyze) {
@@ -36,7 +36,7 @@ public class GoalOrientedMatcher {
         Map<ConceptPatternNode, List<List<ConceptPatternNode>>> index = new HashMap<>();
         for (var entry : elAnalyze.getTBoxGCIs()) {
             List<ConceptPatternNode> leftAtoms = entry.getKey();
-            ConceptPatternNode            B        = entry.getValue();
+            ConceptPatternNode B        = entry.getValue();
             // only keep those where A₁⊓…⊓Aₖ actually subsumes B
             ConceptPatternNode conjA = ConceptPatternNode.conj(leftAtoms);
             if (elAnalyze.subsumes(conjA, B)) {
@@ -48,7 +48,7 @@ public class GoalOrientedMatcher {
         this.gciByRight = Collections.unmodifiableMap(index);
 
         // 2) Prepare a cache for Dec calls: Map<(c,a), DecResult>
-        Map<SimpleEntry<ConceptPatternNode,ConceptPatternNode>, DecAnalyze.DecResult> decCache = new HashMap<>();
+        Map<SimpleEntry<ConceptPatternNode, ConceptPatternNode>, DecAnalyze.DecResult> decCache = new HashMap<>();
         this.decFunc = (c, a) -> {
             var key = new SimpleEntry<>(c, a);
             return decCache.computeIfAbsent(key, k -> decAnalyze.dec(c, a));

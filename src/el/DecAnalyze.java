@@ -57,7 +57,7 @@ public class DecAnalyze {
                 }
             }
             // 2b) otherwise collect all subgoals C′ ⊑? Di where C′ or Di is non‐ground
-            Set<SimpleEntry<ConceptPatternNode,ConceptPatternNode>> subs = new LinkedHashSet<>();
+            Set<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> subs = new LinkedHashSet<>();
             for (ConceptPatternNode di : dis) {
                 if (!isGround(fillC) || !isGround(di)) {
                     subs.add(new SimpleEntry<>(fillC, di));
@@ -99,10 +99,10 @@ public class DecAnalyze {
          *  - empty for Case 6 success without new subgoals
          * When success==false or the call returned null, subGoals==null.
          */
-        public final Set<SimpleEntry<ConceptPatternNode,ConceptPatternNode>> subGoals;
+        public final Set<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> subGoals;
 
         public DecResult(boolean success,
-                         Set<SimpleEntry<ConceptPatternNode,ConceptPatternNode>> subGoals) {
+                         Set<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> subGoals) {
             this.success = success;
 
             //a set of <ConceptPatternNode,ConceptPatternNode>
