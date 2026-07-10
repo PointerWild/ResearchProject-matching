@@ -1,278 +1,526 @@
+import el.ELAnalyze;
+import el.ElkSubsumptionOracle;
+import el.Gamma;
+import el.GoalOrientedMatcher;
+import el.structure.ConceptPatternNode;
 
-//TIP 要<b>运行</b>代码，请按 <shortcut actionId="Run"/> 或
-// 点击装订区域中的 <icon src="AllIcons.Actions.Execute"/> 图标。
-import el.*;
-import el.structure.*;
-import el.structure.ConceptPattern;
-import static el.structure.PatternDSL.*;
 import java.io.IOException;
-import java.util.AbstractMap.SimpleEntry;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 
+/**
+ * Application entry point for the EL matching system.
+ *
+ * <p>Responsibilities:
+ *
+ * <ol>
+ *     <li>Load the TBox and Gamma files.</li>
+ *     <li>Create one long-lived ELK reasoner.</li>
+ *     <li>Inject the reasoner into ELAnalyze.</li>
+ *     <li>Create GoalOrientedMatcher.</li>
+ *     <li>Run Algorithm 5.1.</li>
+ *     <li>Dispose the ELK reasoner automatically.</li>
+ * </ol>
+ */
+public final class Main {
 
+    /**
+     * Namespace used when TBox concept names and role names are converted
+     * into OWL entities.
+     */
+    private static final String BASE_IRI =
+            "http://example.com/research-project#";
 
-        /*
-        def：  concept names  : uppercase letter(s)  ex: A, B ,C
+    /**
+     * Default file locations.
+     *
+     * <p>According to the current project structure, TBox.txt and gamma.txt
+     * are stored under src/.
+     */
+    private static final Path DEFAULT_TBOX_PATH =
+            Path.of("src", "TBox.txt");
 
-        def： variable names  : _uppercase letter(s)_  ex: _X_ ， _YY_
+    private static final Path DEFAULT_GAMMA_PATH =
+            Path.of("src", "gamma.txt");
 
-        def: existential restriction : ∃
-
-        def: role : lowercase letter(s).  ex: r.  s.
-
-        existential restriction with roles :  ∃r. ∃s.
-
-        def： conjunction constructors :  ⊓
-
-        def:  subsumption  :  ⊑  #subsumpted#  （This character cannot be printed）
-
-        def:  Top Τ : Tau
-
-        def:  el- TBox : TBox
-        def:  matching problem set : 	Gamma
-
-
-        */
-
-public class Main {
-
-
-
-    public static void main(String[] args) {
-        System.out.println("ELK dependency loaded successfully.");
-
-        ConceptPattern pattern = pattern(
-                and(
-                        some("has-child", and(concept("MALE"), variable("_X_"))),
-                        some("has-child", and(concept("FEMALE"), variable("_X_")))
-                )
-        );
-
-        System.out.println(pattern);
-
-        ConceptPattern pattern2 = pattern(
-                some("has-child",
-                        and(
-                                some("has-child", and(concept("FEMALE"), variable("_X_"))),
-                                some("has-child", and(concept("MALE"), variable("_Y_"))),
-                                concept("D")
-                        )
-                )
-        );
-
-        System.out.println(pattern2);
-
-
-        ELAnalyze el = new ELAnalyze();
-        DecAnalyze dec = new DecAnalyze(el);
-
-        // 设置 mock subsumption A ⊑ B = true; C ⊑ D = false;
-        el.setMockSubsumption(concept("A"), concept("B"), true);
-        el.setMockSubsumption(concept("C"), concept("D"), false);
-
-        // ===== 用结构化 API 调用 test =====
-        test(dec, variable("_X_"), concept("A")); // Case 1
-        test(dec,
-                some("r", concept("C")),
-                some("r", and(concept("D"), variable("_Y_")))
-        ); // Case 2
-        test(dec,
-                some("r", concept("A")),
-                some("s", concept("A"))
-        ); // Case 3
-        test(dec, concept("A"), some("r", concept("B"))); // Case 4
-        test(dec, some("r", concept("A")), concept("B")); // Case 5
-        test(dec, concept("A"), concept("B"));           // Case 6 (true)
-        test(dec, concept("C"), concept("D"));           // Case 6 (false)
-
-        // 复杂 Case 2
-        ConceptPatternNode c = some("r", variable("_C_"));
-        ConceptPatternNode d = some("r",
-                and(
-                        concept("A"),
-                        some("s", concept("D")),
-                        variable("_X_")
-                )
-        );
-        System.out.println("\n=== Complex Case 2 ===");
-        DecAnalyze.DecResult res = dec.dec(c, d);
-        if (res == null) {
-            System.out.println("FAIL");
-        } else if (res.subGoals.isEmpty()) {
-            System.out.println("SUCCESS (no sub-goals)");
-        } else {
-            System.out.println("Sub-goals:");
-            for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : res.subGoals) {
-                System.out.println("  " + e.getKey() + " ⊑? " + e.getValue());
-            }
-        }
-
-        // 1. 初始化 ELAnalyze 并注入 mock subsumption
-        ELAnalyze elAnalyze = new ELAnalyze();
-        // 设定 A ⊑ B 为 true，A ⊑ C 为 false
-        ConceptPatternNode A = concept("A");
-        ConceptPatternNode B = concept("B");
-        ConceptPatternNode C = concept("C");
-        elAnalyze.setMockSubsumption(A, B, true);
-        elAnalyze.setMockSubsumption(A, C, false);
-
-        // 2. 构造 GoalOrientedMatcher
-        GoalOrientedMatcher matcher = new GoalOrientedMatcher(elAnalyze);
-
-        // —— 测试用例列表 —— //
-        // 每一个测试由一个 Gamma 和期望（可选）组成
-        Object[][] Tests = {
-                // 1) A ⊑? A  （结构化判断，总是 true）
-                { new GammaBuilder().add(A, A).build(),       "A ⊑? A" },
-                // 2) A ⊑? B  （mock→true）
-                { new GammaBuilder().add(A, B).build(),       "A ⊑? B (mock true)" },
-                // 3) A ⊑? C  （mock→false）
-                { new GammaBuilder().add(A, C).build(),       "A ⊑? C (mock false)" },
-                // 4) A ⊓ B ⊑? B  （分解规则应当成功）
-                { new GammaBuilder().add(and(A, B), B).build(), "A ⊓ B ⊑? B" },
-                // 5) ∃r.A ⊑? ∃r.B  （mock A⊑B 为 true，因此成功）
-                { new GammaBuilder().add(some("r", A), some("r", B)).build(), "∃r.A ⊑? ∃r.B" },
-                // 6) ∃r.A ⊓ C ⊑? ∃r.B  （分解+mutation 也可成功，只要 A⊑B）
-                { new GammaBuilder().add(and(some("r", A), C), some("r", B)).build(),
-                        "∃r.A ⊓ C ⊑? ∃r.B" }
-        };
-
-        // 3. 逐个运行并打印结果
-        for (Object[] test : Tests) {
-            Gamma gamma = (Gamma) test[0];
-            String label = (String) test[1];
-
-            boolean ok = matcher.match(gamma);
-            System.out.printf("%-20s → %s%n", label, ok ? "SUCCESS" : "FAILURE");
-        }
-
-
-
-
-
-
-        String[] tests = {
-                "A⊑_X_",                           // true
-                "A ⊑ B",                           // true
-                "∃r.A ⊓ B ⊑ ∃s.(C ⊓ ∃t.D)",        // true
-                "∃r.A ⊓ B ⊑ ∃s.(C ⊓ ∃t._D_)",      // true
-                "∃r.A⊓B ⊑∃s.(C⊓∃t._D_)",           // true
-                "∃r.a⊓B ⊑∃s.(C⊓∃t._D_)",           // false
-                "a⊓B ⊑∃s.(C⊓∃t._D_)",              // false
-                "⊓ A B ⊑ C",                       // false (⊓ 非二元)
-                "A ⊑ B ⊓",                         // false (⊓ 非二元)
-                "A ⊑ ∃r",                          // false (缺少‘.’后面pattern)
-                "A ⊑ B ⊑ C"                        // false (多于一个⊑)
-        };
-        for (String test : tests) {
-            System.out.printf("%-30s → %b%n", test, ELSyntaxChecker.isValid(test));
-        }
-
-
-        String gammaFile = "/Users/roy/Desktop/RPtask/task1/src/gamma.txt";
-        String tboxFile  = "/Users/roy/Desktop/RPtask/task1/src/tbox.txt";
-
-        String rightGroundGammaFile = "/Users/roy/Desktop/RPtask/task1/src/rightGroundGamma.txt";
-
-        ELAnalyze repo = new ELAnalyze();
-        try {
-            repo.loadGamma(gammaFile);
-            repo.loadTBox(tboxFile);
-
-            System.out.println("=== Valid Gamma Lines ===");
-            for (String g : repo.getGammaLines()) {
-                System.out.println(g);
-            }
-            System.out.println("=== replaced left ground  Gamma Lines ===");
-            repo.replaceLeftGroundGammaVariablesWithTop();
-            for (String g : repo.getGammaLines()) {
-                System.out.println(g);
-            }
-
-            System.out.println("=== Valid TBox Lines ===");
-            for (String t : repo.getTBoxLines()) {
-                System.out.println(t);
-            }
-        } catch (IOException e) {
-            System.err.println("Error reading files: " + e.getMessage());
-            e.printStackTrace();
-        }
-
-
-
-        ELAnalyze el_bottom = new ELAnalyze();
-        try {
-            el_bottom.loadGamma(rightGroundGammaFile);
-            el_bottom.loadTBox(tboxFile);
-
-            System.out.println("=== Valid Gamma Lines ===");
-            for (String g : el_bottom.getGammaLines()) {
-                System.out.println(g);
-            }
-
-            System.out.println("=== Valid TBox Lines ===");
-            for (String t : el_bottom.getTBoxLines()) {
-                System.out.println(t);
-            }
-
-            el_bottom.computeBottom();
-            System.out.println("=== Bottom ===");
-            System.out.println(el_bottom.getBottom());
-
-
-            System.out.println("=== replaced right ground Gamma Lines ===");
-            el_bottom.replaceRightGroundGammaVariablesWithBottom();
-            for (String g : el_bottom.getGammaLines()) {
-                System.out.println(g);
-            }
-
-
-
-        } catch (IOException e) {
-            System.err.println("Error reading files: " + e.getMessage());
-            e.printStackTrace();
-        }
-
+    private Main() {
+        // Utility entry-point class; do not instantiate.
     }
 
+    public static void main(String[] args) {
 
-    /** 已改为接收 ConceptPatternNode，输出结构化子式 */
-    static void test(DecAnalyze dec,
-                     ConceptPatternNode left,
-                     ConceptPatternNode right) {
-        System.out.println("\n=== Testing Dec(" + left + " ⊑? " + right + ") ===");
-        DecAnalyze.DecResult result = dec.dec(left, right);
-        if (result == null) {
-            System.out.println("⇒ FAIL");
-        } else if (result.subGoals.isEmpty()) {
-            System.out.println("⇒ SUCCESS (no new subsumptions)");
-        } else {
-            System.out.println("⇒ Generated sub-goals:");
-            for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : result.subGoals) {
-                System.out.println("   " + e.getKey() + " ⊑? " + e.getValue());
-            }
+        /*
+         * Optional command-line usage:
+         *
+         * java Main <TBox-file> <Gamma-file>
+         *
+         * When no arguments are supplied, the program uses:
+         *
+         * src/TBox.txt
+         * src/gamma.txt
+         */
+        Path tBoxPath =
+                args.length >= 1
+                        ? Path.of(args[0])
+                        : DEFAULT_TBOX_PATH;
+
+        Path gammaPath =
+                args.length >= 2
+                        ? Path.of(args[1])
+                        : DEFAULT_GAMMA_PATH;
+
+        try {
+            runMatchingSystem(
+                    tBoxPath,
+                    gammaPath
+            );
+
+        } catch (Exception exception) {
+            System.err.println();
+            System.err.println(
+                    "Matching system failed: "
+                            + exception.getMessage()
+            );
+
+            exception.printStackTrace();
+
+            System.exit(1);
         }
     }
 
     /**
-     * 简易的 Gamma 构造器，支持链式 add(...)
+     * Initializes and runs the complete matching system.
      */
-    static class GammaBuilder {
-        private final Gamma gamma = new Gamma();
-        GammaBuilder add(ConceptPatternNode left, ConceptPatternNode right) {
-            gamma.add(left, right);
-            return this;
+    private static void runMatchingSystem(
+            Path tBoxPath,
+            Path gammaPath
+    ) throws IOException {
+
+        validateInputFile(
+                tBoxPath,
+                "TBox"
+        );
+
+        validateInputFile(
+                gammaPath,
+                "Gamma"
+        );
+
+        System.out.println(
+                "========================================"
+        );
+
+        System.out.println(
+                "EL Matching System"
+        );
+
+        System.out.println(
+                "========================================"
+        );
+
+        System.out.println(
+                "TBox file : "
+                        + tBoxPath.toAbsolutePath()
+        );
+
+        System.out.println(
+                "Gamma file: "
+                        + gammaPath.toAbsolutePath()
+        );
+
+        /*
+         * Step 1:
+         * Create ELAnalyze.
+         *
+         * ELAnalyze stores the project-level TBox and Gamma data.
+         * It does not create or own the reasoner.
+         */
+        ELAnalyze analyze =
+                new ELAnalyze();
+
+        /*
+         * Step 2:
+         * Load the same TBox and Gamma that will be used by the complete
+         * Algorithm 5.1 implementation.
+         */
+        analyze.loadTBox(
+                tBoxPath
+        );
+
+        analyze.loadGamma(
+                gammaPath
+        );
+
+        List<String> tBoxLines =
+                analyze.getTBoxLines();
+
+        List<String> gammaLines =
+                analyze.getGammaLines();
+
+        printLoadedInput(
+                tBoxLines,
+                gammaLines
+        );
+
+        /*
+         * Step 3:
+         * Create exactly one ELK semantic reasoner.
+         *
+         * It receives the same TBox stored in ELAnalyze.
+         *
+         * try-with-resources guarantees that close() is called even when
+         * matching throws an exception.
+         */
+        try (
+                ElkSubsumptionOracle elkReasoner =
+                        new ElkSubsumptionOracle(
+                                tBoxLines,
+                                BASE_IRI
+                        )
+        ) {
+            /*
+             * Step 4:
+             * Inject the real semantic oracle into ELAnalyze.
+             *
+             * From this point onward:
+             *
+             * ELAnalyze.subsumes(...)
+             *      -> ElkSubsumptionOracle.subsumes(...)
+             *      -> ELK reasoner.isEntailed(...)
+             */
+            analyze.setSubsumptionOracle(
+                    elkReasoner
+            );
+
+            /*
+             * Optional ELAnalyze-level logging.
+             *
+             * ElkSubsumptionOracle itself already prints ELK queries.
+             * Set this to true only when both layers of logging are useful.
+             */
+            analyze.setDebug(false);
+
+            /*
+             * Step 5:
+             * Convert the textual Gamma expressions into the Gamma structure
+             * expected by GoalOrientedMatcher.
+             */
+            Gamma gamma =
+                    createGamma(
+                            gammaLines
+                    );
+
+            /*
+             * Record ontology size before the matcher is constructed.
+             *
+             * GoalOrientedMatcher may already perform semantic queries in
+             * its constructor while creating the TBox GCI index.
+             */
+            int axiomsBefore =
+                    elkReasoner.getAxiomCount();
+
+            /*
+             * Step 6:
+             * Create GoalOrientedMatcher only after:
+             *
+             * 1. TBox has been loaded;
+             * 2. Gamma has been loaded;
+             * 3. the real ELK oracle has been injected.
+             */
+            GoalOrientedMatcher matcher =
+                    new GoalOrientedMatcher(
+                            analyze
+                    );
+
+            /*
+             * Step 7:
+             * Execute Algorithm 5.1.
+             */
+            System.out.println();
+            System.out.println(
+                    "=== Running Algorithm 5.1 ==="
+            );
+
+            long startTime =
+                    System.nanoTime();
+
+            boolean hasMatcher =
+                    matcher.match(gamma);
+
+            long elapsedNanoseconds =
+                    System.nanoTime() - startTime;
+
+            int axiomsAfter =
+                    elkReasoner.getAxiomCount();
+
+            /*
+             * Step 8:
+             * Print the result and diagnostics.
+             */
+            System.out.println();
+            System.out.println(
+                    "========================================"
+            );
+
+            System.out.println(
+                    hasMatcher
+                            ? "RESULT: HAS_MATCHER"
+                            : "RESULT: NO_MATCHER"
+            );
+
+            System.out.println(
+                    "========================================"
+            );
+
+            System.out.println(
+                    "ELK query count       : "
+                            + elkReasoner.getElkQueryCount()
+            );
+
+            System.out.println(
+                    "Ontology axioms before: "
+                            + axiomsBefore
+            );
+
+            System.out.println(
+                    "Ontology axioms after : "
+                            + axiomsAfter
+            );
+
+            System.out.printf(
+                    "Execution time         : %.3f ms%n",
+                    elapsedNanoseconds
+                            / 1_000_000.0
+            );
+
+            /*
+             * Gamma queries must never be added to the ontology.
+             */
+            if (axiomsBefore != axiomsAfter) {
+                throw new IllegalStateException(
+                        "Ontology was modified while matching. "
+                                + "Before: "
+                                + axiomsBefore
+                                + ", after: "
+                                + axiomsAfter
+                );
+            }
+
+            System.out.println(
+                    "Ontology isolation     : OK"
+            );
         }
-        Gamma build() {
-            return gamma;
+
+        /*
+         * ElkSubsumptionOracle.close() has been called automatically here.
+         */
+        System.out.println(
+                "ELK reasoner closed successfully."
+        );
+
+        /*
+         * ================================================================
+         * OLD DEMO AND MOCK TEST FLOWS ARE INTENTIONALLY DISABLED
+         * ================================================================
+         *
+         * The following old Main-based tests are no longer executed:
+         *
+         * - PatternDSL printing examples
+         * - setMockSubsumption(...) examples
+         * - random subsumption tests
+         * - manual Dec Case 1–6 tests
+         * - mock-based GoalOrientedMatcher test matrix
+         * - ELSyntaxChecker examples
+         * - bottom-construction examples
+         * - left-ground/right-ground replacement demonstrations
+         *
+         * These tests should be migrated to JUnit files under:
+         *
+         *     test/el/
+         *
+         * They must not remain part of the production application entry
+         * point.
+         */
+    }
+
+    /**
+     * Converts textual matching constraints into the existing Gamma model.
+     *
+     * <p>Accepted relation symbols:
+     *
+     * <pre>
+     *     C ⊑ D
+     *     C ⊑? D
+     * </pre>
+     */
+    private static Gamma createGamma(
+            List<String> gammaLines
+    ) {
+        Gamma gamma =
+                new Gamma();
+
+        for (String line : gammaLines) {
+            String[] expressions =
+                    splitGammaLine(line);
+
+            ConceptPatternNode left =
+                    ConceptPatternNode.parse(
+                            expressions[0]
+                    );
+
+            ConceptPatternNode right =
+                    ConceptPatternNode.parse(
+                            expressions[1]
+                    );
+
+            gamma.add(
+                    left,
+                    right
+            );
+        }
+
+        return gamma;
+    }
+
+    /**
+     * Splits one textual Gamma constraint into its left and right sides.
+     */
+    private static String[] splitGammaLine(
+            String line
+    ) {
+        if (line == null) {
+            throw new IllegalArgumentException(
+                    "Gamma line cannot be null."
+            );
+        }
+
+        String cleaned =
+                line.trim();
+
+        /*
+         * Convert matching notation to the parser-independent separator.
+         */
+        String normalized =
+                cleaned.replace(
+                        "⊑?",
+                        "⊑"
+                );
+
+        String[] parts =
+                normalized.split(
+                        "\\s*⊑\\s*",
+                        -1
+                );
+
+        if (parts.length != 2) {
+            throw new IllegalArgumentException(
+                    "Gamma expression must contain exactly one "
+                            + "subsumption relation: "
+                            + line
+            );
+        }
+
+        String left =
+                parts[0].trim();
+
+        String right =
+                parts[1].trim();
+
+        if (left.isEmpty()
+                || right.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Both sides of a Gamma expression must be non-empty: "
+                            + line
+            );
+        }
+
+        return new String[]{
+                left,
+                right
+        };
+    }
+
+    /**
+     * Validates that an input file exists and is readable.
+     */
+    private static void validateInputFile(
+            Path path,
+            String label
+    ) {
+        if (!Files.exists(path)) {
+            throw new IllegalArgumentException(
+                    label
+                            + " file does not exist: "
+                            + path.toAbsolutePath()
+            );
+        }
+
+        if (!Files.isRegularFile(path)) {
+            throw new IllegalArgumentException(
+                    label
+                            + " path is not a regular file: "
+                            + path.toAbsolutePath()
+            );
+        }
+
+        if (!Files.isReadable(path)) {
+            throw new IllegalArgumentException(
+                    label
+                            + " file is not readable: "
+                            + path.toAbsolutePath()
+            );
         }
     }
 
+    /**
+     * Prints the input loaded by the matching system.
+     */
+    private static void printLoadedInput(
+            List<String> tBoxLines,
+            List<String> gammaLines
+    ) {
+        System.out.println();
+        System.out.println(
+                "=== Loaded TBox ==="
+        );
+
+        for (int index = 0;
+             index < tBoxLines.size();
+             index++) {
+
+            System.out.printf(
+                    "%3d. %s%n",
+                    index + 1,
+                    tBoxLines.get(index)
+            );
+        }
+
+        System.out.println();
+        System.out.println(
+                "=== Loaded Gamma ==="
+        );
+
+        for (int index = 0;
+             index < gammaLines.size();
+             index++) {
+
+            System.out.printf(
+                    "%3d. %s%n",
+                    index + 1,
+                    gammaLines.get(index)
+            );
+        }
+
+        System.out.println();
+        System.out.println(
+                "TBox axiom count : "
+                        + tBoxLines.size()
+        );
+
+        System.out.println(
+                "Gamma constraint count: "
+                        + gammaLines.size()
+        );
+    }
 }
-
-
-
-
-
-
-
-
