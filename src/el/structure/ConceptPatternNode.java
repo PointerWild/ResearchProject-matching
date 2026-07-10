@@ -2,6 +2,7 @@ package el.structure;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -190,5 +191,91 @@ public class ConceptPatternNode {
             pos += tok.length();
             return tok;
         }
+    }
+
+
+    @Override
+    public boolean equals(Object object) {
+        if (this == object) {
+            return true;
+        }
+
+        if (!(object instanceof ConceptPatternNode other)) {
+            return false;
+        }
+
+        /*
+         * VARIABLE and CONCEPT_NAME can never be equal because their types
+         * are different.
+         */
+        if (type != other.type) {
+            return false;
+        }
+
+        return switch (type) {
+            case TOP ->
+                    true;
+
+            case CONCEPT_NAME ->
+                    Objects.equals(
+                            conceptName,
+                            other.conceptName
+                    );
+
+            case VARIABLE ->
+                    Objects.equals(
+                            variable,
+                            other.variable
+                    );
+
+            case EXISTENTIAL ->
+                    Objects.equals(
+                            role,
+                            other.role
+                    )
+                            && Objects.equals(
+                            existentialFiller,
+                            other.existentialFiller
+                    );
+
+            case CONJUNCTION ->
+                    Objects.equals(
+                            conjunctions,
+                            other.conjunctions
+                    );
+        };
+    }
+
+    @Override
+    public int hashCode() {
+        return switch (type) {
+            case TOP ->
+                    Objects.hash(type);
+
+            case CONCEPT_NAME ->
+                    Objects.hash(
+                            type,
+                            conceptName
+                    );
+
+            case VARIABLE ->
+                    Objects.hash(
+                            type,
+                            variable
+                    );
+
+            case EXISTENTIAL ->
+                    Objects.hash(
+                            type,
+                            role,
+                            existentialFiller
+                    );
+
+            case CONJUNCTION ->
+                    Objects.hash(
+                            type,
+                            conjunctions
+                    );
+        };
     }
 }

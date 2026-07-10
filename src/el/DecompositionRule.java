@@ -3,99 +3,177 @@ package el;
 import el.structure.ConceptPatternNode;
 import el.structure.SubsumptionPattern;
 
-import java.util.ArrayList;
 import java.util.AbstractMap.SimpleEntry;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
 /**
- * Implements the Decomposition rule (Fig.2):
- *   If s = C1 ⊓ … ⊓ Cn ⊑? D is unsolved in Γ,
- *   pick some Ci, call Dec(Ci ⊑? D).
- *   • If Dec fails → rule fails (return false).
- *   • Otherwise add all returned subGoals to Γ and mark s solved.
+ * Implements the Decomposition rule:
+ *
+ * If s = C1 ⊓ ... ⊓ Cn ⊑? D is unsolved in Gamma,
+ * choose some Ci and call Dec(Ci ⊑? D).
+ *
+ * A single atom is treated as the n = 1 case.
  */
-public class DecompositionRule {
+public final class DecompositionRule {
+
+    private DecompositionRule() {
+    }
 
     /**
-     * Try to apply Decomposition to sp within gamma using dec.
-     *
-     * @param sp    the subsumption pattern C1⊓…⊓Cn ⊑? D (must be unsolved)
-     * @param gamma the Gamma instance holding all patterns
-     * @param dec   the DecAnalyze to compute Dec(Ci⊑?D)
-     * @return true if the rule applied successfully (sp marked solved and possibly new patterns added);
-     *         false if Dec failed or sp was not a conjunction.
+     * Applies the first successful decomposition directly to Gamma.
      */
     public static boolean apply(
             SubsumptionPattern sp,
             Gamma gamma,
-            DecAnalyze dec) {
-
-        // only apply to unsolved conjunctions
-        if (sp.solved
-                || sp.left.type != ConceptPatternNode.Type.CONJUNCTION) {
+            DecAnalyze dec
+    ) {
+        if (sp.solved) {
             return false;
         }
 
-        @SuppressWarnings("unchecked")
-        List<ConceptPatternNode> conjuncts = sp.left.conjunctions;
+        /*
+         * A conjunction produces multiple candidates.
+         * A single atom produces one candidate.
+         */
+        List<ConceptPatternNode> conjuncts =
+                getTopLevelConjuncts(sp.left);
 
-        // try each conjunct Ci
-        for (ConceptPatternNode Ci : conjuncts) {
-            // call Dec(Ci ⊑? D)
-            DecAnalyze.DecResult res = dec.dec(Ci, sp.right);
-            if (res == null || !res.success) {
-                // failure on this Ci → rule fails
+        for (ConceptPatternNode ci : conjuncts) {
+            DecAnalyze.DecResult result =
+                    dec.dec(
+                            ci,
+                            sp.right
+                    );
+
+            if (result == null || !result.success) {
                 continue;
-                //return false;
             }
-            // success: add each subGoal to gamma
-            Set<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> subGoals = res.subGoals;
-            for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : subGoals) {
-                gamma.add(e.getKey(), e.getValue());
-            }
-            // mark the original pattern solved
+
+            addSubGoals(
+                    gamma,
+                    result.subGoals
+            );
+
             sp.solved = true;
+
             return true;
         }
 
-        // should never reach here, but in case no conjuncts
         return false;
     }
 
     /**
-     * Enumerate all feasible decomposition branches:
-     * for each Ci where Dec(Ci ⊑? D) succeeds, clone the Gamma and apply that branch.
+     * Enumerates all feasible decomposition branches.
+     *
+     * For every Ci for which Dec(Ci ⊑? D) succeeds, this method creates
+     * a new Gamma branch.
      */
     public static List<Gamma> applyAll(
             SubsumptionPattern sp,
             Gamma gamma,
-            DecAnalyze dec) {
-        List<Gamma> branches = new ArrayList<>();
-        //check solvable
-        if (sp.solved
-                || sp.left.type != ConceptPatternNode.Type.CONJUNCTION) {
+            DecAnalyze dec
+    ) {
+        List<Gamma> branches =
+                new ArrayList<>();
+
+        if (sp.solved) {
             return branches;
         }
 
-        // for each ci, check whether   dec(Ci, sp.right)
-        List<ConceptPatternNode> conjuncts = sp.left.conjunctions;
-        int origIndex = gamma.getAll().indexOf(sp);
-        for (ConceptPatternNode Ci : conjuncts) {
-            DecAnalyze.DecResult res = dec.dec(Ci, sp.right);
-            if (res == null || !res.success) continue;
-            // new brunch of every successful Ci brunch
-            Gamma copy = gamma.copy();
-            SubsumptionPattern spCopy = copy.getAll().get(origIndex);
-            // add
-            for (var e : res.subGoals) {
-                copy.add(e.getKey(), e.getValue());
+        int originalIndex =
+                gamma.getAll().indexOf(sp);
+
+        if (originalIndex < 0) {
+            throw new IllegalArgumentException(
+                    "The supplied subsumption pattern "
+                            + "does not belong to Gamma."
+            );
+        }
+
+        /*
+         * Supports both:
+         *
+         * C1 ⊓ ... ⊓ Cn ⊑? D
+         *
+         * and the n = 1 case:
+         *
+         * C1 ⊑? D
+         */
+        List<ConceptPatternNode> conjuncts =
+                getTopLevelConjuncts(sp.left);
+
+        for (ConceptPatternNode ci : conjuncts) {
+            DecAnalyze.DecResult result =
+                    dec.dec(
+                            ci,
+                            sp.right
+                    );
+
+            if (result == null || !result.success) {
+                continue;
             }
-            spCopy.solved = true;
+
+            Gamma copy =
+                    gamma.copy();
+
+            SubsumptionPattern copiedPattern =
+                    copy.getAll().get(
+                            originalIndex
+                    );
+
+            addSubGoals(
+                    copy,
+                    result.subGoals
+            );
+
+            copiedPattern.solved = true;
+
             branches.add(copy);
         }
+
         return branches;
     }
 
+    /**
+     * Returns the operands of a top-level conjunction.
+     *
+     * A non-conjunction is represented as a singleton list because it
+     * corresponds to the n = 1 case.
+     */
+    private static List<ConceptPatternNode> getTopLevelConjuncts(
+            ConceptPatternNode left
+    ) {
+        if (left.type
+                == ConceptPatternNode.Type.CONJUNCTION) {
+            return left.conjunctions;
+        }
 
+        return List.of(left);
+    }
+
+    /**
+     * Adds all Dec-generated subgoals to Gamma.
+     */
+    private static void addSubGoals(
+            Gamma gamma,
+            Set<SimpleEntry<
+                    ConceptPatternNode,
+                    ConceptPatternNode>> subGoals
+    ) {
+        if (subGoals == null) {
+            return;
+        }
+
+        for (SimpleEntry<
+                ConceptPatternNode,
+                ConceptPatternNode> subGoal : subGoals) {
+
+            gamma.add(
+                    subGoal.getKey(),
+                    subGoal.getValue()
+            );
+        }
+    }
 }
