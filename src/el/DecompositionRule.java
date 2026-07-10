@@ -83,7 +83,7 @@ public final class DecompositionRule {
         }
 
         int originalIndex =
-                gamma.getAll().indexOf(sp);
+                gamma.indexOfIdentity(sp);
 
         if (originalIndex < 0) {
             throw new IllegalArgumentException(

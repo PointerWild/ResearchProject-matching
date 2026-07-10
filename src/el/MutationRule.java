@@ -53,7 +53,7 @@ public class MutationRule {
         }
 
         List<ConceptPatternNode> cis = sp.left.conjunctions;
-        int origIndex = gamma.getAll().indexOf(sp);
+        int origIndex = gamma.indexOfIdentity(sp);
 
         //Go through all the GCIs in TBox
         for (var gci : elAnalyze.getTBoxGCIs()) {
@@ -130,7 +130,7 @@ public class MutationRule {
 
         List<ConceptPatternNode> cis    = sp.left.conjunctions;  // C1…Cn
         ConceptPatternNode D    = sp.right;
-        int                        idx  = gamma.getAll().indexOf(sp);
+        int                        idx  = gamma.indexOfIdentity(sp);
 
         // Fetch only the GCIs whose right side is D
         var candidateLists = gciByRight.getOrDefault(D, Collections.emptyList());

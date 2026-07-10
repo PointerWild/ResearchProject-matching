@@ -29,8 +29,22 @@ public class Gamma {
     }
 
     /** Add a new subsumption C ⊑? D (initially unsolved). */
-    public void add(ConceptPatternNode left, ConceptPatternNode right) {
-        patterns.add(new SubsumptionPattern(left, right));
+    // Deduplication
+    public boolean add(
+            ConceptPatternNode left,
+            ConceptPatternNode right
+    ) {
+        SubsumptionPattern candidate =
+                new SubsumptionPattern(left, right);
+
+        for (SubsumptionPattern existing : patterns) {
+            if (existing.equals(candidate)) {
+                return false;
+            }
+        }
+
+        patterns.add(candidate);
+        return true;
     }
 
     /** Remove all patterns and start fresh. */
@@ -85,6 +99,23 @@ public class Gamma {
             copyList.add(sp.copy());
         }
         return new Gamma(copyList, true);
+    }
+
+
+
+    public int indexOfIdentity(
+            SubsumptionPattern target
+    ) {
+        for (int index = 0;
+             index < patterns.size();
+             index++) {
+
+            if (patterns.get(index) == target) {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
 }
