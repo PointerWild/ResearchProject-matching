@@ -1,0 +1,15 @@
+1: fixed infinite loop
+
+     eager solver  and GoalOrientedMatcher
+
+2: fixed elk-reasoner usagecase
+
+3: Deduplication of gamma
+
+    s1 = ∃r._X_ ⊑? ∃r.B
+    s2 = ∃r._X_ ⊑? ∃r.B
+
+
+4: Todo
+   Gamma normalization
+   Mutation  overload
