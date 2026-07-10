@@ -10,6 +10,12 @@
     s2 = ∃r._X_ ⊑? ∃r.B
 
 
+
+
 4: Todo
-   Gamma normalization
+   Gamma normalization //  "_ XXX _"
+   //∃r.B ⊑ ∃r._X_ ⊓ A1 ⊓ A2 ⊓ A3 //  Gamma normalization
+
    Mutation  overload
+
+
