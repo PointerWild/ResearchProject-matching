@@ -1,39 +1,24 @@
 package el;
 
 import el.structure.ConceptPatternNode;
+import el.structure.Subsumption;
 import el.structure.SubsumptionPattern;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
- * Normalizes an initial EL matching problem before Algorithm 5.1 starts.
- *
- * <p>For every constraint:
- *
- * <pre>
- *     C ⊑? D
- * </pre>
- *
- * this class performs the following operations:
- *
- * <ol>
- *     <li>verifies that at least one side is ground;</li>
- *     <li>splits a top-level conjunction on the right;</li>
- *     <li>checks ground-ground constraints using the semantic oracle;</li>
- *     <li>removes entailed ground-ground constraints;</li>
- *     <li>returns unmatchable when one ground-ground constraint is false;</li>
- *     <li>creates a fresh Gamma containing only normalized constraints.</li>
- * </ol>
+ * Performs exactly the normalization assumed before Algorithm 5.1 in
+ * Baader and Morawska's EL matching algorithm.
  */
 public final class GammaNormalizer {
 
     private final ELAnalyze elAnalyze;
 
-    public GammaNormalizer(
-            ELAnalyze elAnalyze
-    ) {
+    public GammaNormalizer(ELAnalyze elAnalyze) {
         this.elAnalyze = Objects.requireNonNull(
                 elAnalyze,
                 "elAnalyze cannot be null"
@@ -41,202 +26,141 @@ public final class GammaNormalizer {
     }
 
     /**
-     * Normalizes an initial Gamma without modifying the supplied Gamma.
+     * Normalizes without mutating {@code originalGamma}.
      *
-     * @param originalGamma original matching problem
-     * @return normalization result
-     * @throws IllegalArgumentException if a constraint has variables on both
-     *                                  sides and therefore violates the
-     *                                  definition of an EL matching problem
+     * <ol>
+     *     <li>Build the complete RHS-expanded {@code expandedGamma}.</li>
+     *     <li>Classify all expanded constraints.</li>
+     *     <li>Check every ground-ground constraint before creating the
+     *         Algorithm 5.1 work Gamma.</li>
+     *     <li>Keep only constraints with exactly one non-ground side.</li>
+     * </ol>
      */
-    public GammaNormalizationResult normalize(
-            Gamma originalGamma
-    ) {
+    public GammaNormalizationResult normalize(Gamma originalGamma) {
         Objects.requireNonNull(
                 originalGamma,
                 "originalGamma cannot be null"
         );
 
-        /*
-         * Build a completely new Gamma.
-         *
-         * Consequently:
-         * - the original Gamma is not modified;
-         * - all resulting constraints start as unsolved;
-         * - repeated match() calls do not reuse old solved flags.
-         */
-        Gamma normalizedGamma =
-                new Gamma();
+        // Phase 1: finish the complete syntactic expansion before any ELK query.
+        Gamma expandedGamma = expandRightConjunctions(originalGamma);
 
-        for (SubsumptionPattern original
-                : originalGamma.getAll()) {
+        List<SubsumptionPattern> groundSubsumptions = new ArrayList<>();
+        List<SubsumptionPattern> nonGroundSubsumptions = new ArrayList<>();
 
-            ConceptPatternNode left =
-                    Objects.requireNonNull(
-                            original.left,
-                            "Gamma left side cannot be null"
-                    );
+        // Phase 2a: classify the already-complete expanded Gamma.
+        for (SubsumptionPattern expanded : expandedGamma.getAll()) {
+            boolean leftGround = isGround(expanded.left);
+            boolean rightGround = isGround(expanded.right);
 
-            ConceptPatternNode right =
-                    Objects.requireNonNull(
-                            original.right,
-                            "Gamma right side cannot be null"
-                    );
-
-            boolean leftGround =
-                    isGround(left);
-
-            boolean originalRightGround =
-                    isGround(right);
-
-            /*
-             * Definition of an EL matching problem:
-             *
-             * at least one of C and D must be ground.
-             */
-            if (!leftGround && !originalRightGround) {
+            if (!leftGround && !rightGround) {
                 throw new IllegalArgumentException(
                         "Invalid EL matching constraint: at least one side "
-                                + "must be ground, but both sides contain "
-                                + "variables: "
-                                + left
-                                + " ⊑? "
-                                + right
+                                + "must be ground: "
+                                + expanded
                 );
             }
 
-            /*
-             * Split only the top-level conjunction of the right-hand side.
-             *
-             * Example:
-             *
-             * ∃r.B ⊑? ∃r._X_ ⊓ A ⊓ C
-             *
-             * becomes candidates:
-             *
-             * ∃r._X_
-             * A
-             * C
-             *
-             * A conjunction inside an existential restriction is not split:
-             *
-             * ∃r.(_X_ ⊓ A)
-             *
-             * remains one existential atom.
-             */
-            List<ConceptPatternNode> rightAtoms =
-                    new ArrayList<>();
+            if (leftGround && rightGround) {
+                groundSubsumptions.add(expanded);
+            } else {
+                nonGroundSubsumptions.add(expanded);
+            }
+        }
 
-            collectTopLevelRightAtoms(
-                    right,
-                    rightAtoms
+        // Phase 2b: all ground checks have precedence over Algorithm 5.1.
+        List<GammaNormalizationResult.GroundCheckResult> groundChecks =
+                new ArrayList<>();
+
+        for (SubsumptionPattern ground : groundSubsumptions) {
+            boolean entailed = elAnalyze.subsumes(
+                    ground.left,
+                    ground.right
             );
 
-            /*
-             * An empty conjunction represents TOP.
-             *
-             * C ⊑? TOP is always true and can be removed.
-             */
-            if (rightAtoms.isEmpty()) {
-                continue;
-            }
+            groundChecks.add(
+                    new GammaNormalizationResult.GroundCheckResult(
+                            ground.left,
+                            ground.right,
+                            entailed
+                    )
+            );
 
-            for (ConceptPatternNode rightAtom
-                    : rightAtoms) {
+            if (!entailed) {
+                String failureReason =
+                        "TBox does not entail the ground constraint: "
+                                + ground.left
+                                + " ⊑ "
+                                + ground.right;
 
-                /*
-                 * TOP on the right is always satisfied.
-                 */
-                if (rightAtom.type
-                        == ConceptPatternNode.Type.TOP) {
-                    continue;
-                }
+                debugPrint(
+                        originalGamma,
+                        expandedGamma,
+                        groundChecks,
+                        null,
+                        failureReason
+                );
 
-                if (rightAtom.type
-                        == ConceptPatternNode.Type.CONJUNCTION) {
-                    throw new IllegalStateException(
-                            "Gamma normalization failed to split the "
-                                    + "right-hand conjunction: "
-                                    + rightAtom
-                    );
-                }
-
-                boolean rightGround =
-                        isGround(rightAtom);
-
-                /*
-                 * Safety check after splitting.
-                 *
-                 * A normalized matching constraint still needs at least
-                 * one ground side.
-                 */
-                if (!leftGround && !rightGround) {
-                    throw new IllegalArgumentException(
-                            "Normalization generated an invalid matching "
-                                    + "constraint with two non-ground sides: "
-                                    + left
-                                    + " ⊑? "
-                                    + rightAtom
-                    );
-                }
-
-                /*
-                 * Both sides are ground.
-                 *
-                 * Ask the real semantic oracle:
-                 *
-                 * TBox |= left ⊑ rightAtom
-                 */
-                if (leftGround && rightGround) {
-                    boolean entailed =
-                            elAnalyze.subsumes(
-                                    left,
-                                    rightAtom
-                            );
-
-                    /*
-                     * A false ground-ground constraint means that no
-                     * substitution can solve the matching problem.
-                     */
-                    if (!entailed) {
-                        return GammaNormalizationResult.unmatchable(
-                                "TBox does not entail the ground constraint: "
-                                        + left
-                                        + " ⊑ "
-                                        + rightAtom
-                        );
-                    }
-
-                    /*
-                     * The ground constraint is true, so it can be removed
-                     * from Gamma.
-                     */
-                    continue;
-                }
-
-                /*
-                 * Exactly one side is non-ground and the right side is now
-                 * an atom. This is a normalized matching constraint.
-                 *
-                 * Gamma.add() also prevents duplicate constraints.
-                 */
-                normalizedGamma.add(
-                        left,
-                        rightAtom
+                return GammaNormalizationResult.unmatchable(
+                        expandedGamma,
+                        groundChecks,
+                        ground,
+                        failureReason
                 );
             }
         }
 
+        // Only after every ground constraint succeeds may the work Gamma exist.
+        Gamma normalizedGamma = new Gamma();
+        for (SubsumptionPattern nonGround : nonGroundSubsumptions) {
+            normalizedGamma.add(
+                    nonGround.left,
+                    nonGround.right
+            );
+        }
+
+        validateNormalizedGamma(normalizedGamma);
+
+        debugPrint(
+                originalGamma,
+                expandedGamma,
+                groundChecks,
+                normalizedGamma,
+                null
+        );
+
         return GammaNormalizationResult.matchable(
-                normalizedGamma
+                expandedGamma,
+                normalizedGamma,
+                groundChecks
         );
     }
 
-    /**
-     * Recursively flattens only top-level conjunction nodes.
-     *
-     * <p>This method does not descend into existential fillers.
-     */
+    private Gamma expandRightConjunctions(Gamma originalGamma) {
+        Gamma expandedGamma = new Gamma();
+
+        for (SubsumptionPattern original : originalGamma.getAll()) {
+            ConceptPatternNode left = Objects.requireNonNull(
+                    original.left,
+                    "Gamma left side cannot be null"
+            );
+            ConceptPatternNode right = Objects.requireNonNull(
+                    original.right,
+                    "Gamma right side cannot be null"
+            );
+
+            List<ConceptPatternNode> rightAtoms = new ArrayList<>();
+            collectTopLevelRightAtoms(right, rightAtoms);
+
+            for (ConceptPatternNode rightAtom : rightAtoms) {
+                expandedGamma.add(left, rightAtom);
+            }
+        }
+
+        return expandedGamma;
+    }
+
+    /** Recursively flattens conjunction nodes only while they are top-level. */
     private void collectTopLevelRightAtoms(
             ConceptPatternNode node,
             List<ConceptPatternNode> output
@@ -246,63 +170,130 @@ public final class GammaNormalizer {
                 "right-hand expression cannot be null"
         );
 
-        if (node.type
-                != ConceptPatternNode.Type.CONJUNCTION) {
-
+        if (node.type != ConceptPatternNode.Type.CONJUNCTION) {
             output.add(node);
             return;
         }
 
         if (node.conjunctions == null) {
             throw new IllegalStateException(
-                    "CONJUNCTION node has no operand list."
+                    "CONJUNCTION node has no operand list: " + node
             );
         }
 
-        for (ConceptPatternNode child
-                : node.conjunctions) {
-
-            collectTopLevelRightAtoms(
-                    child,
-                    output
-            );
+        for (ConceptPatternNode child : node.conjunctions) {
+            collectTopLevelRightAtoms(child, output);
         }
     }
 
-    /**
-     * Returns true iff the complete expression contains no matching variable.
-     */
-    private boolean isGround(
-            ConceptPatternNode node
-    ) {
+    private void validateNormalizedGamma(Gamma normalizedGamma) {
+        Set<Subsumption> seen = new HashSet<>();
+
+        for (SubsumptionPattern pattern : normalizedGamma.getAll()) {
+            boolean leftGround = isGround(pattern.left);
+            boolean rightGround = isGround(pattern.right);
+
+            if (!isAtom(pattern.right)) {
+                throw new IllegalStateException(
+                        "Normalized Gamma has a non-atomic right side: "
+                                + pattern
+                );
+            }
+            if (leftGround && rightGround) {
+                throw new IllegalStateException(
+                        "Normalized Gamma still contains a ground-ground "
+                                + "constraint: "
+                                + pattern
+                );
+            }
+            if (!leftGround && !rightGround) {
+                throw new IllegalStateException(
+                        "Normalized Gamma contains two non-ground sides: "
+                                + pattern
+                );
+            }
+            if (pattern.solved) {
+                throw new IllegalStateException(
+                        "Normalized constraints must initially be unsolved: "
+                                + pattern
+                );
+            }
+            if (!seen.add(pattern)) {
+                throw new IllegalStateException(
+                        "Normalized Gamma contains a duplicate constraint: "
+                                + pattern
+                );
+            }
+        }
+    }
+
+    private boolean isAtom(ConceptPatternNode node) {
+        return node.type == ConceptPatternNode.Type.CONCEPT_NAME
+                || node.type == ConceptPatternNode.Type.VARIABLE
+                || node.type == ConceptPatternNode.Type.EXISTENTIAL
+                || node.type == ConceptPatternNode.Type.TOP;
+    }
+
+    private boolean isGround(ConceptPatternNode node) {
         Objects.requireNonNull(
                 node,
                 "concept expression cannot be null"
         );
 
         return switch (node.type) {
-            case VARIABLE ->
-                    false;
-
-            case TOP, CONCEPT_NAME ->
-                    true;
-
-            case EXISTENTIAL ->
-                    isGround(
-                            node.existentialFiller
-                    );
-
+            case VARIABLE -> false;
+            case TOP, CONCEPT_NAME -> true;
+            case EXISTENTIAL -> isGround(node.existentialFiller);
             case CONJUNCTION -> {
                 if (node.conjunctions == null) {
                     throw new IllegalStateException(
-                            "CONJUNCTION node has no operand list."
+                            "CONJUNCTION node has no operand list: " + node
                     );
                 }
-
-                yield node.conjunctions
-                        .stream()
-                        .allMatch(this::isGround);
+                yield node.conjunctions.stream().allMatch(this::isGround);
             }
         };
+    }
+
+    private void debugPrint(
+            Gamma originalGamma,
+            Gamma expandedGamma,
+            List<GammaNormalizationResult.GroundCheckResult> groundChecks,
+            Gamma normalizedGamma,
+            String failureReason
+    ) {
+        if (!elAnalyze.isDebug()) {
+            return;
+        }
+
+        System.out.println("=== Gamma normalization ===");
+        System.out.println("\nOriginal Gamma:");
+        printGamma(originalGamma);
+        System.out.println("\nExpanded Gamma:");
+        printGamma(expandedGamma);
+        System.out.println("\nGround checks:");
+        for (GammaNormalizationResult.GroundCheckResult check : groundChecks) {
+            System.out.printf(
+                    "TBox |= %s ⊑ %s -> %b%n",
+                    check.left(),
+                    check.right(),
+                    check.entailed()
+            );
+        }
+
+        if (failureReason != null) {
+            System.out.println("\nNO_MATCHER: " + failureReason);
+            return;
+        }
+
+        System.out.println("\nNormalized Gamma:");
+        printGamma(normalizedGamma);
+        System.out.println("\nAlgorithm 5.1 starts.");
+    }
+
+    private void printGamma(Gamma gamma) {
+        for (SubsumptionPattern pattern : gamma.getAll()) {
+            System.out.println(pattern);
+        }
     }
 }

@@ -17,352 +17,303 @@ class GammaNormalizerTest {
     private static final String BASE_IRI =
             "http://example.com/gamma-normalization-test#";
 
-    /**
-     * Input:
-     *
-     * ∃r.B ⊑? ∃r._X_ ⊓ A ⊓ C ⊓ D
-     *
-     * TBox entails all three ground constraints:
-     *
-     * ∃r.B ⊑ A
-     * ∃r.B ⊑ C
-     * ∃r.B ⊑ D
-     *
-     * Therefore the final normalized Gamma contains only:
-     *
-     * ∃r.B ⊑? ∃r._X_
-     */
     @Test
-    void shouldSplitRightConjunctionAndRemoveTrueGroundConstraints() {
+    void expandsFourConstraintsBeforeProducingOneNormalizedConstraint() {
+        List<String> tBox = List.of(
+                "∃r.B ⊑ A1",
+                "∃r.B ⊑ A2",
+                "∃r.B ⊑ A3"
+        );
 
-        List<String> tBox =
-                List.of(
-                        "∃r.B ⊑ A",
-                        "∃r.B ⊑ C",
-                        "∃r.B ⊑ D"
-                );
-
-        try (
-                ElkSubsumptionOracle elk =
-                        new ElkSubsumptionOracle(
-                                tBox,
-                                BASE_IRI
-                        )
-        ) {
-            ELAnalyze analyze =
-                    new ELAnalyze();
-
-            analyze.setTBoxLines(
-                    tBox
+        try (ElkSubsumptionOracle elk = oracle(tBox)) {
+            ELAnalyze analyze = analyze(tBox, elk);
+            Gamma original = gamma(
+                    "∃r.B",
+                    "∃r._X_ ⊓ A1 ⊓ A2 ⊓ A3"
             );
-
-            analyze.setSubsumptionOracle(
-                    elk
-            );
-
-            Gamma original =
-                    new Gamma();
-
-            original.add(
-                    ConceptPatternNode.parse("∃r.B"),
-                    ConceptPatternNode.parse(
-                            "∃r._X_ ⊓ A ⊓ C ⊓ D"
-                    )
-            );
+            SubsumptionPattern originalPattern = original.getAll().get(0);
+            int queriesBefore = elk.getElkQueryCount();
+            int axiomsBefore = elk.getAxiomCount();
 
             GammaNormalizationResult result =
-                    new GammaNormalizer(
-                            analyze
-                    ).normalize(original);
+                    new GammaNormalizer(analyze).normalize(original);
 
-            assertTrue(
-                    result.isMatchable()
-            );
+            assertTrue(result.isMatchable());
+            assertNotSame(original, result.getExpandedGamma());
+            assertNotSame(original, result.getNormalizedGamma());
 
-            Gamma normalized =
-                    result.getNormalizedGamma();
+            Gamma expanded = result.getExpandedGamma();
+            assertEquals(4, expanded.getAll().size());
+            assertContains(expanded, "∃r.B", "∃r._X_");
+            assertContains(expanded, "∃r.B", "A1");
+            assertContains(expanded, "∃r.B", "A2");
+            assertContains(expanded, "∃r.B", "A3");
 
-            assertNotSame(
-                    original,
-                    normalized,
-                    "Normalization must create a new Gamma."
-            );
+            Gamma normalized = result.getNormalizedGamma();
+            assertEquals(1, normalized.getAll().size());
+            assertContains(normalized, "∃r.B", "∃r._X_");
+            assertFalse(normalized.getAll().get(0).solved);
 
-            assertEquals(
-                    1,
-                    normalized.getAll().size()
-            );
+            assertEquals(3, result.getGroundChecks().size());
+            assertTrue(result.getGroundChecks().stream().allMatch(
+                    GammaNormalizationResult.GroundCheckResult::entailed
+            ));
+            assertEquals(3, elk.getElkQueryCount() - queriesBefore);
+            assertEquals(axiomsBefore, elk.getAxiomCount());
 
-            SubsumptionPattern remaining =
-                    normalized.getAll().get(0);
-
-            assertEquals(
-                    ConceptPatternNode.parse("∃r.B"),
-                    remaining.left
-            );
-
-            assertEquals(
-                    ConceptPatternNode.parse("∃r._X_"),
-                    remaining.right
-            );
-
-            assertFalse(
-                    remaining.solved,
-                    "Normalized constraints must initially be unsolved."
-            );
-
-            /*
-             * Three ground-ground constraints were checked:
-             *
-             * ∃r.B ⊑ A
-             * ∃r.B ⊑ C
-             * ∃r.B ⊑ D
-             */
-            assertEquals(
-                    3,
-                    elk.getElkQueryCount()
-            );
-
-            /*
-             * Original Gamma remains untouched.
-             */
-            assertEquals(
-                    1,
-                    original.getAll().size()
-            );
-
+            assertEquals(1, original.getAll().size());
             assertEquals(
                     ConceptPatternNode.Type.CONJUNCTION,
-                    original.getAll().get(0).right.type
+                    originalPattern.right.type
             );
-
-            assertFalse(
-                    original.getAll().get(0).solved
-            );
+            assertFalse(originalPattern.solved);
         }
     }
 
-    /**
-     * One false ground-ground conjunct makes the entire problem unmatchable.
-     */
     @Test
-    void falseGroundConjunctShouldMakeProblemUnmatchable() {
+    void failedGroundCheckImmediatelyReturnsNoMatcher() {
+        List<String> tBox = List.of(
+                "∃r.B ⊑ A1",
+                "∃r.B ⊑ A2"
+        );
 
-        List<String> tBox =
-                List.of(
-                        "∃r.B ⊑ A",
-                        "∃r.B ⊑ C"
-                );
-
-        try (
-                ElkSubsumptionOracle elk =
-                        new ElkSubsumptionOracle(
-                                tBox,
-                                BASE_IRI
-                        )
-        ) {
-            ELAnalyze analyze =
-                    new ELAnalyze();
-
-            analyze.setTBoxLines(
-                    tBox
-            );
-
-            analyze.setSubsumptionOracle(
-                    elk
-            );
-
-            Gamma gamma =
-                    new Gamma();
-
-            gamma.add(
-                    ConceptPatternNode.parse("∃r.B"),
-                    ConceptPatternNode.parse(
-                            "∃r._X_ ⊓ A ⊓ C ⊓ D"
-                    )
+        try (ElkSubsumptionOracle elk = oracle(tBox)) {
+            ELAnalyze analyze = analyze(tBox, elk);
+            Gamma original = gamma(
+                    "∃r.B",
+                    "∃r._X_ ⊓ A1 ⊓ A2 ⊓ A3"
             );
 
             GammaNormalizationResult result =
-                    new GammaNormalizer(
-                            analyze
-                    ).normalize(gamma);
+                    new GammaNormalizer(analyze).normalize(original);
 
-            assertFalse(
-                    result.isMatchable(),
-                    "The problem must fail because the TBox "
-                            + "does not entail ∃r.B ⊑ D."
+            assertFalse(result.isMatchable());
+            assertEquals(4, result.getExpandedGamma().getAll().size());
+            assertEquals(3, result.getGroundChecks().size());
+            assertFalse(result.getGroundChecks().get(2).entailed());
+            assertTrue(result.getFailureReason().contains("∃r.B ⊑ A3"));
+            assertEquals(
+                    ConceptPatternNode.parse("A3"),
+                    result.getFailedSubsumption().right
+            );
+            assertThrows(
+                    IllegalStateException.class,
+                    result::getNormalizedGamma
             );
 
-            assertTrue(
-                    result.getFailureReason().contains(
-                            "∃r.B ⊑ D"
-                    )
-            );
+            GoalOrientedMatcher matcher = new GoalOrientedMatcher(analyze);
+            assertFalse(matcher.match(original));
+            assertEquals(0, matcher.getDfsInvocationCount());
+            assertFalse(original.getAll().get(0).solved);
         }
     }
 
-    /**
-     * The definition of an EL matching problem requires at least one
-     * ground side.
-     */
     @Test
-    void shouldRejectConstraintWithTwoNonGroundSides() {
+    void checksFailingGroundConstraintBeforeAnyEagerRule() {
+        List<String> tBox = List.of();
 
-        List<String> tBox =
-                List.of();
-
-        try (
-                ElkSubsumptionOracle elk =
-                        new ElkSubsumptionOracle(
-                                tBox,
-                                BASE_IRI
-                        )
-        ) {
-            ELAnalyze analyze =
-                    new ELAnalyze();
-
-            analyze.setTBoxLines(
-                    tBox
+        try (ElkSubsumptionOracle elk = oracle(tBox)) {
+            ELAnalyze analyze = analyze(tBox, elk);
+            Gamma original = new Gamma();
+            original.add(
+                    ConceptPatternNode.parse("A1"),
+                    ConceptPatternNode.parse("_X_")
             );
-
-            analyze.setSubsumptionOracle(
-                    elk
-            );
-
-            Gamma gamma =
-                    new Gamma();
-
-            gamma.add(
-                    ConceptPatternNode.parse("∃r._X_"),
-                    ConceptPatternNode.parse("∃s._Y_")
-            );
-
-            IllegalArgumentException exception =
-                    assertThrows(
-                            IllegalArgumentException.class,
-                            () -> new GammaNormalizer(
-                                    analyze
-                            ).normalize(gamma)
-                    );
-
-            assertTrue(
-                    exception.getMessage().contains(
-                            "at least one side must be ground"
-                    )
-            );
-        }
-    }
-
-    /**
-     * Verifies that GoalOrientedMatcher performs normalization before DFS.
-     */
-    @Test
-    void matcherShouldNormalizeBeforeRunningAlgorithm51() {
-
-        List<String> tBox =
-                List.of(
-                        "∃r.B ⊑ A",
-                        "∃r.B ⊑ C",
-                        "∃r.B ⊑ D"
-                );
-
-        try (
-                ElkSubsumptionOracle elk =
-                        new ElkSubsumptionOracle(
-                                tBox,
-                                BASE_IRI
-                        )
-        ) {
-            ELAnalyze analyze =
-                    new ELAnalyze();
-
-            analyze.setTBoxLines(
-                    tBox
-            );
-
-            analyze.setSubsumptionOracle(
-                    elk
-            );
-
-            Gamma gamma =
-                    new Gamma();
-
-            gamma.add(
+            original.add(
                     ConceptPatternNode.parse("∃r.B"),
-                    ConceptPatternNode.parse(
-                            "∃r._X_ ⊓ A ⊓ C ⊓ D"
-                    )
+                    ConceptPatternNode.parse("A3")
             );
 
-            GoalOrientedMatcher matcher =
-                    new GoalOrientedMatcher(
-                            analyze
-                    );
+            int queriesBefore = elk.getElkQueryCount();
+            GoalOrientedMatcher matcher = new GoalOrientedMatcher(analyze);
 
-            assertTrue(
-                    matcher.match(gamma)
-            );
-
-            /*
-             * match() must not mark the original input Gamma solved.
-             */
+            assertFalse(matcher.match(original));
+            assertEquals(1, elk.getElkQueryCount() - queriesBefore);
+            assertEquals(0, matcher.getDfsInvocationCount());
             assertFalse(
-                    gamma.getAll().get(0).solved
+                    original.getAll().get(0).solved,
+                    "The eager-solvable original constraint must remain untouched."
             );
         }
     }
 
     @Test
-    void shouldParseExtendedConceptAndVariableNames() {
+    void constructingMatcherDoesNotQueryElk() {
+        List<String> tBox = List.of("A1 ⊑ A2");
 
-        System.out.println(
-                ">>> shouldParseExtendedConceptAndVariableNames is running"
+        try (ElkSubsumptionOracle elk = oracle(tBox)) {
+            ELAnalyze analyze = analyze(tBox, elk);
+            int queriesBefore = elk.getElkQueryCount();
+
+            new GoalOrientedMatcher(analyze);
+
+            assertEquals(queriesBefore, elk.getElkQueryCount());
+        }
+    }
+
+    @Test
+    void splitsOnlyTopLevelRightConjunction() {
+        List<String> tBox = List.of();
+
+        try (ElkSubsumptionOracle elk = oracle(tBox)) {
+            ELAnalyze analyze = analyze(tBox, elk);
+            Gamma original = gamma(
+                    "∃r.B",
+                    "∃r.(_X_ ⊓ A1 ⊓ A2)"
+            );
+
+            GammaNormalizationResult result =
+                    new GammaNormalizer(analyze).normalize(original);
+
+            assertTrue(result.isMatchable());
+            assertEquals(1, result.getExpandedGamma().getAll().size());
+            assertEquals(1, result.getNormalizedGamma().getAll().size());
+
+            ConceptPatternNode right =
+                    result.getNormalizedGamma().getAll().get(0).right;
+            assertEquals(ConceptPatternNode.Type.EXISTENTIAL, right.type);
+            assertEquals(
+                    ConceptPatternNode.Type.CONJUNCTION,
+                    right.existentialFiller.type
+            );
+            assertEquals(3, right.existentialFiller.conjunctions.size());
+            assertEquals(0, result.getGroundChecks().size());
+        }
+    }
+
+    @Test
+    void duplicateExpandedAtomsHaveSetSemanticsAndOneElkQueryEach() {
+        List<String> tBox = List.of(
+                "∃r.B ⊑ A1",
+                "∃r.B ⊑ A2"
         );
 
-        ConceptPatternNode concept =
-                ConceptPatternNode.parse("Abc1");
+        try (ElkSubsumptionOracle elk = oracle(tBox)) {
+            ELAnalyze analyze = analyze(tBox, elk);
+            Gamma original = gamma(
+                    "∃r.B",
+                    "∃r._X_ ⊓ A1 ⊓ A1 ⊓ A2"
+            );
+            int queriesBefore = elk.getElkQueryCount();
 
-        assertEquals(
-                ConceptPatternNode.Type.CONCEPT_NAME,
-                concept.type
+            GammaNormalizationResult result =
+                    new GammaNormalizer(analyze).normalize(original);
+
+            assertTrue(result.isMatchable());
+            assertEquals(3, result.getExpandedGamma().getAll().size());
+            assertContains(result.getExpandedGamma(), "∃r.B", "∃r._X_");
+            assertContains(result.getExpandedGamma(), "∃r.B", "A1");
+            assertContains(result.getExpandedGamma(), "∃r.B", "A2");
+            assertEquals(2, result.getGroundChecks().size());
+            assertEquals(2, elk.getElkQueryCount() - queriesBefore);
+        }
+    }
+
+    @Test
+    void allTrueGroundConstraintsNormalizeToEmptyGammaAndMatch() {
+        List<String> tBox = List.of(
+                "∃r.B ⊑ A1",
+                "∃r.B ⊑ A2"
         );
 
-        assertEquals(
-                "Abc1",
-                concept.conceptName.name
-        );
+        try (ElkSubsumptionOracle elk = oracle(tBox)) {
+            ELAnalyze analyze = analyze(tBox, elk);
+            Gamma original = gamma("∃r.B", "A1 ⊓ A2");
+
+            GammaNormalizationResult result =
+                    new GammaNormalizer(analyze).normalize(original);
+
+            assertTrue(result.isMatchable());
+            assertEquals(2, result.getExpandedGamma().getAll().size());
+            assertEquals(0, result.getNormalizedGamma().getAll().size());
+            assertEquals(2, result.getGroundChecks().size());
+
+            GoalOrientedMatcher matcher = new GoalOrientedMatcher(analyze);
+            assertTrue(matcher.match(original));
+            assertEquals(1, matcher.getDfsInvocationCount());
+        }
+    }
+
+    @Test
+    void rejectsConstraintWhenBothSidesAreNonGround() {
+        List<String> tBox = List.of();
+
+        try (ElkSubsumptionOracle elk = oracle(tBox)) {
+            ELAnalyze analyze = analyze(tBox, elk);
+            Gamma original = gamma("∃r._X_", "∃s._Y_");
+
+            IllegalArgumentException exception = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> new GammaNormalizer(analyze).normalize(original)
+            );
+
+            assertTrue(exception.getMessage().contains(
+                    "at least one side must be ground"
+            ));
+        }
+    }
+
+    @Test
+    void parsesExtendedConceptAndVariableNamesWithoutAmbiguity() {
+        assertConceptName("A1");
+        assertConceptName("A2");
+        assertConceptName("Abc1");
+        assertVariable("_Xs_");
+        assertVariable("_Xsasda1_");
 
         ConceptPatternNode variable =
                 ConceptPatternNode.parse("_Xsasda1_");
+        assertEquals(ConceptPatternNode.Type.VARIABLE, variable.type);
+        assertFalse(variable.type == ConceptPatternNode.Type.CONCEPT_NAME);
+    }
 
-        assertEquals(
-                ConceptPatternNode.Type.VARIABLE,
-                variable.type
+    private static ElkSubsumptionOracle oracle(List<String> tBox) {
+        return new ElkSubsumptionOracle(tBox, BASE_IRI);
+    }
+
+    private static ELAnalyze analyze(
+            List<String> tBox,
+            ElkSubsumptionOracle elk
+    ) {
+        ELAnalyze analyze = new ELAnalyze();
+        analyze.setTBoxLines(tBox);
+        analyze.setSubsumptionOracle(elk);
+        return analyze;
+    }
+
+    private static Gamma gamma(String left, String right) {
+        Gamma gamma = new Gamma();
+        gamma.add(
+                ConceptPatternNode.parse(left),
+                ConceptPatternNode.parse(right)
         );
+        return gamma;
+    }
 
-        assertEquals(
-                "_Xsasda1_",
-                variable.variable.name
+    private static void assertContains(
+            Gamma gamma,
+            String left,
+            String right
+    ) {
+        SubsumptionPattern expected = new SubsumptionPattern(
+                ConceptPatternNode.parse(left),
+                ConceptPatternNode.parse(right)
         );
-
-        ConceptPatternNode expression =
-                ConceptPatternNode.parse(
-                        "∃r._Xsasda1_ ⊓ A1 ⊓ Abc1 ⊓ A3"
-                );
-
-        assertEquals(
-                ConceptPatternNode.Type.CONJUNCTION,
-                expression.type
-        );
-
-        assertEquals(
-                4,
-                expression.conjunctions.size()
-        );
-
-        System.out.println(
-                ">>> extended syntax test passed"
+        assertTrue(
+                gamma.getAll().contains(expected),
+                () -> "Missing constraint " + expected + " in " + gamma
         );
     }
 
+    private static void assertConceptName(String input) {
+        ConceptPatternNode parsed = ConceptPatternNode.parse(input);
+        assertEquals(ConceptPatternNode.Type.CONCEPT_NAME, parsed.type);
+        assertEquals(input, parsed.conceptName.name);
+    }
+
+    private static void assertVariable(String input) {
+        ConceptPatternNode parsed = ConceptPatternNode.parse(input);
+        assertEquals(ConceptPatternNode.Type.VARIABLE, parsed.type);
+        assertEquals(input, parsed.variable.name);
+    }
 }

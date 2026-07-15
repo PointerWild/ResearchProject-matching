@@ -1,95 +1,138 @@
 package el;
 
+import el.structure.ConceptPatternNode;
+import el.structure.SubsumptionPattern;
+
+import java.util.List;
 import java.util.Objects;
 
 /**
- * Result of normalizing an initial matching problem Gamma.
- *
- * <p>A result has one of two states:
- *
- * <ul>
- *     <li>matchable: normalization succeeded and produced a normalized Gamma;</li>
- *     <li>unmatchable: a ground-ground constraint was not entailed by the TBox.</li>
- * </ul>
+ * Immutable result of the paper-defined normalization that precedes
+ * Algorithm 5.1.
  */
 public final class GammaNormalizationResult {
 
+    /** One completed semantic check for a ground-ground constraint. */
+    public record GroundCheckResult(
+            ConceptPatternNode left,
+            ConceptPatternNode right,
+            boolean entailed
+    ) {
+        public GroundCheckResult {
+            Objects.requireNonNull(left, "left cannot be null");
+            Objects.requireNonNull(right, "right cannot be null");
+        }
+    }
+
     private final boolean matchable;
+    private final Gamma expandedGamma;
     private final Gamma normalizedGamma;
+    private final List<GroundCheckResult> groundChecks;
     private final String failureReason;
+    private final SubsumptionPattern failedSubsumption;
 
     private GammaNormalizationResult(
             boolean matchable,
+            Gamma expandedGamma,
             Gamma normalizedGamma,
-            String failureReason
+            List<GroundCheckResult> groundChecks,
+            String failureReason,
+            SubsumptionPattern failedSubsumption
     ) {
         this.matchable = matchable;
+        this.expandedGamma = Objects.requireNonNull(
+                expandedGamma,
+                "expandedGamma cannot be null"
+        );
         this.normalizedGamma = normalizedGamma;
+        this.groundChecks = List.copyOf(
+                Objects.requireNonNull(
+                        groundChecks,
+                        "groundChecks cannot be null"
+                )
+        );
         this.failureReason = failureReason;
+        this.failedSubsumption = failedSubsumption;
     }
 
-    /**
-     * Creates a successful normalization result.
-     */
     public static GammaNormalizationResult matchable(
-            Gamma normalizedGamma
+            Gamma expandedGamma,
+            Gamma normalizedGamma,
+            List<GroundCheckResult> groundChecks
     ) {
         return new GammaNormalizationResult(
                 true,
+                expandedGamma,
                 Objects.requireNonNull(
                         normalizedGamma,
                         "normalizedGamma cannot be null"
                 ),
+                groundChecks,
+                null,
                 null
         );
     }
 
-    /**
-     * Creates a result representing an immediately unmatchable problem.
-     */
     public static GammaNormalizationResult unmatchable(
+            Gamma expandedGamma,
+            List<GroundCheckResult> groundChecks,
+            SubsumptionPattern failedSubsumption,
             String failureReason
     ) {
         return new GammaNormalizationResult(
                 false,
+                expandedGamma,
                 null,
+                groundChecks,
                 Objects.requireNonNull(
                         failureReason,
                         "failureReason cannot be null"
-                )
+                ),
+                Objects.requireNonNull(
+                        failedSubsumption,
+                        "failedSubsumption cannot be null"
+                ).copy()
         );
     }
 
-    /**
-     * Returns whether normalization produced a potentially matchable Gamma.
-     */
     public boolean isMatchable() {
         return matchable;
     }
 
+    /** Complete RHS-expanded intermediate problem, including ground constraints. */
+    public Gamma getExpandedGamma() {
+        return expandedGamma;
+    }
+
     /**
-     * Returns the normalized Gamma.
+     * The only Gamma that may be supplied to Algorithm 5.1.
      *
-     * @throws IllegalStateException when the matching problem was found
-     *                               unmatchable during normalization
+     * @throws IllegalStateException if a failed ground check made the problem
+     *                               immediately unmatchable
      */
     public Gamma getNormalizedGamma() {
         if (!matchable) {
             throw new IllegalStateException(
-                    "No normalized Gamma exists because the matching "
-                            + "problem is unmatchable: "
+                    "No normalized Gamma exists because the matching problem "
+                            + "is unmatchable: "
                             + failureReason
             );
         }
-
         return normalizedGamma;
     }
 
-    /**
-     * Returns the reason why normalization determined that the problem
-     * has no matcher, or {@code null} after successful normalization.
-     */
+    public List<GroundCheckResult> getGroundChecks() {
+        return groundChecks;
+    }
+
     public String getFailureReason() {
         return failureReason;
+    }
+
+    /** Returns a defensive copy of the failed constraint, or null on success. */
+    public SubsumptionPattern getFailedSubsumption() {
+        return failedSubsumption == null
+                ? null
+                : failedSubsumption.copy();
     }
 }

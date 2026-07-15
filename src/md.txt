@@ -16,6 +16,11 @@
    Gamma normalization //  "_ XXX _"
    //∃r.B ⊑ ∃r._X_ ⊓ A1 ⊓ A2 ⊓ A3 //  Gamma normalization
 
+   what should we do with this case ?
+   //∃r.B ⊑? ∃r.(_X_ ⊓ A1 ⊓ A2)
+
    Mutation  overload
+
+   优化： normalization 部分 可以 优先解决一部分情况...
 
 
