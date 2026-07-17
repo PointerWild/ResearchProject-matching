@@ -18,20 +18,46 @@ public class GoalOrientedMatcher {
     private final ELAnalyze    elAnalyze;
     private final DecAnalyze   decAnalyze;
     private final EagerSolver  eagerSolver;
+    private final GammaNormalizer gammaNormalizer;
+
+    /*
+     * 仅用于测试：
+     * 验证 normalization 失败时 DFS 没有启动。
+     */
+    private int dfsInvocationCount;
 
     // new pre-processing fields
     //Pre-computes all GCIs in a right-hand‐side → left-hand‐side mapping, so we only scan the relevant GCIs for a given D
     //Caches every Dec(c, a) call, so repeated decompositions aren’t recomputed.
     //Produces one Gamma per feasible (A₁…Aₖ ⊑ₜ B) branch, each with its own fresh copy of the subgoals and solved marking.
-    private final Map<ConceptPatternNode,List<List<ConceptPatternNode>>> gciByRight;
-    private final BiFunction<ConceptPatternNode, ConceptPatternNode,DecAnalyze.DecResult> decFunc;
+  //  private final Map<ConceptPatternNode,List<List<ConceptPatternNode>>> gciByRight;
+   // private final BiFunction<ConceptPatternNode, ConceptPatternNode,DecAnalyze.DecResult> decFunc;
+
 
 
     public GoalOrientedMatcher(ELAnalyze elAnalyze) {
-        this.elAnalyze = elAnalyze;
-        this.decAnalyze = new DecAnalyze(elAnalyze);
-        this.eagerSolver = new EagerSolver(elAnalyze);
+        this.elAnalyze =
+                Objects.requireNonNull(
+                        elAnalyze,
+                        "elAnalyze cannot be null"
+                );
 
+        this.decAnalyze =
+                new DecAnalyze(
+                        this.elAnalyze
+                );
+
+        this.eagerSolver =
+                new EagerSolver(
+                        this.elAnalyze
+                );
+
+        this.gammaNormalizer =
+                new GammaNormalizer(
+                        this.elAnalyze
+                );
+
+        /*delete on 16.july.2026 for test
         // 1) Build the GCI index: for each GCI (A₁…Aₖ ⊑ₜ B), record A‐lists under B
         Map<ConceptPatternNode, List<List<ConceptPatternNode>>> index = new HashMap<>();
         for (var entry : elAnalyze.getTBoxGCIs()) {
@@ -47,37 +73,39 @@ public class GoalOrientedMatcher {
         }
         this.gciByRight = Collections.unmodifiableMap(index);
 
+
         // 2) Prepare a cache for Dec calls: Map<(c,a), DecResult>
         Map<SimpleEntry<ConceptPatternNode, ConceptPatternNode>, DecAnalyze.DecResult> decCache = new HashMap<>();
         this.decFunc = (c, a) -> {
             var key = new SimpleEntry<>(c, a);
             return decCache.computeIfAbsent(key, k -> decAnalyze.dec(c, a));
         };
+
+         */
     }
 
 
     /**
      * Normalizes the initial Gamma and then executes Algorithm 5.1.
      *
-     * @param gamma original, possibly non-normalized matching problem
+     * @param originalGamma original, possibly non-normalized matching problem
      * @return true iff the matching problem has a matcher
      */
     public boolean match(
-            Gamma gamma
+            Gamma originalGamma
     ) {
         Objects.requireNonNull(
-                gamma,
-                "gamma cannot be null"
+                originalGamma,
+                "originalGamma cannot be null"
         );
 
-        GammaNormalizer normalizer =
-                new GammaNormalizer(
-                        elAnalyze
-                );
+        dfsInvocationCount = 0;
+
+
 
         GammaNormalizationResult normalization =
-                normalizer.normalize(
-                        gamma
+                gammaNormalizer.normalize(
+                        originalGamma
                 );
 
         /*
@@ -92,8 +120,14 @@ public class GoalOrientedMatcher {
          *
          * The original Gamma is not modified.
          */
+        /*
+         * DFS receives only normalized constraints.
+         * The original Gamma remains unchanged.
+         */
+        Gamma normalizedGamma =
+                normalization.getNormalizedGamma();
         return dfs(
-                normalization.getNormalizedGamma()
+                normalizedGamma
         );
     }
 
@@ -102,6 +136,9 @@ public class GoalOrientedMatcher {
      * @return true on success, false on any failure path
      */
     private boolean dfs(Gamma gamma) {
+
+        dfsInvocationCount++;
+
         // —— (1) Eager phase ——
         while (true) {
             try {
@@ -153,4 +190,14 @@ public class GoalOrientedMatcher {
     private int countSolved(Gamma gamma) {
         return (int) gamma.getAll().stream().filter(p -> p.solved).count();
     }
+
+    /**
+     * 仅用于同 package 下的测试。
+     *
+     * 用于验证 normalization 失败时 DFS 没有启动。
+     */
+    int getDfsInvocationCount() {
+        return dfsInvocationCount;
+    }
+
 }
