@@ -23,4 +23,7 @@
 
    优化： normalization 部分 可以 优先解决一部分情况...
 
+   22.july
+ 5:  updata Dec() - Fixed a boundary issue in the conditional logic.
+
 
