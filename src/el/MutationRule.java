@@ -3,6 +3,7 @@ package el;
 
 import el.structure.ConceptPatternNode;
 import el.structure.SubsumptionPattern;
+import el.structure.ConceptPatternOps;
 
 import java.util.function.BiFunction;
 import java.util.*;
@@ -46,14 +47,69 @@ public class MutationRule {
             DecAnalyze dec,
             ELAnalyze elAnalyze) {
         //check applable
+
+        Objects.requireNonNull(
+                sp,
+                "sp cannot be null"
+        );
+
+        Objects.requireNonNull(
+                gamma,
+                "gamma cannot be null"
+        );
+
+        Objects.requireNonNull(
+                dec,
+                "dec cannot be null"
+        );
+
+        Objects.requireNonNull(
+                elAnalyze,
+                "elAnalyze cannot be null"
+        );
+
         List<Gamma> branches = new ArrayList<>();
-        if (sp.solved
-                || sp.left.type != ConceptPatternNode.Type.CONJUNCTION) {
+        if (sp.solved) {
             return branches;
         }
+        /*
+         * Mutation is considered only after eager rules have been
+         * saturated. Therefore neither complete side may be a variable.
+         */
+        if (sp.left.type == ConceptPatternNode.Type.VARIABLE
+                || sp.right.type == ConceptPatternNode.Type.VARIABLE) {
 
-        List<ConceptPatternNode> cis = sp.left.conjunctions;
-        int origIndex = gamma.indexOfIdentity(sp);
+            throw new IllegalStateException(
+                    "Mutation must only run after eager rules are saturated: "
+                            + sp
+            );
+        }
+
+        int originalIndex =
+                gamma.indexOfIdentity(sp);
+
+
+        if (originalIndex < 0) {
+            throw new IllegalArgumentException(
+                    "The supplied subsumption pattern "
+                            + "does not belong to Gamma."
+            );
+        }
+
+        /*
+         * Supports:
+         *
+         * n = 1:
+         * C1 ⊑? D
+         *
+         * n > 1:
+         * C1 ⊓ ... ⊓ Cn ⊑? D
+         *
+         * Tau becomes the empty atom list.
+         */
+
+        List<ConceptPatternNode> cis = ConceptPatternOps.topLevelAtoms(sp.left);
+
 
         //Go through all the GCIs in TBox
         for (var gci : elAnalyze.getTBoxGCIs()) {
@@ -61,41 +117,54 @@ public class MutationRule {
             var B  = gci.getValue();
             // 1)  A₁⊓…⊓Aₖ ⊑ₜ B
             ConceptPatternNode conjA = ConceptPatternNode.conj(As);
-            if (!elAnalyze.subsumes(conjA, B)) continue;
+            /*
+             * Check:
+             *
+             * A1 ⊓ ... ⊓ Ak ⊑T B
+             */
+            ConceptPatternNode conjunction = ConceptPatternNode.conj(As);
+            if (!elAnalyze.subsumes(conjunction, B))  continue;
+
 
             // 2) for each Aη，at least find one Ci which decompose successfully
-            boolean mappingOK = true;
+            boolean mappingSucceeded = true;
             List<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> allSubGoals = new ArrayList<>();
             for (ConceptPatternNode A : As) {
-                boolean someOK = false;
-                for (ConceptPatternNode C : cis) {
-                    var r = dec.dec(C, A);
-                    if (r != null && r.success) {
-                        allSubGoals.addAll(r.subGoals);
-                        someOK = true;
+                boolean found = false;
+                for (ConceptPatternNode Ci : cis) {
+                    DecAnalyze.DecResult result = dec.dec(Ci, A);
+                    if (result.success  ) {
+                        allSubGoals.addAll(result.subGoals);
+                        found = true;
+                        /*
+                         * Temporary first-success behavior.
+                         *
+                         * This break will be removed when all successful
+                         * Ci combinations are enumerated.
+                         */
                         break;
                     }
                 }
-                if (!someOK) {
-                    mappingOK = false;
+                if (!found) {
+                    mappingSucceeded = false;
                     break;
                 }
             }
-            if (!mappingOK) continue;
+            if (!mappingSucceeded) continue;
 
             // 3) decompose B ⊑? D
-            var rd = dec.dec(B, sp.right);
-            if (rd == null || !rd.success) continue;
+            DecAnalyze.DecResult rd = dec.dec(B, sp.right);
+            if (!rd.success ) continue;
 
             // 4)  For that GCI branch, construct a new Gamma
             Gamma copy = gamma.copy();
-            SubsumptionPattern spCopy = copy.getAll().get(origIndex);
+            SubsumptionPattern spCopy = copy.getAll().get(originalIndex);
             // Add the sub-goals produced by decomposing
-            for (var e : allSubGoals) {
+            for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : allSubGoals) {
                 copy.add(e.getKey(), e.getValue());
             }
             // Add the sub-goals generated by decomposing B ⊑? D
-            for (var e : rd.subGoals) {
+            for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : rd.subGoals) {
                 copy.add(e.getKey(), e.getValue());
             }
             spCopy.solved = true;
@@ -123,12 +192,11 @@ public class MutationRule {
 
         List<Gamma> branches = new ArrayList<>();
         // Only apply to unsolved conjunction‐left patterns
-        if (sp.solved
-                || sp.left.type != ConceptPatternNode.Type.CONJUNCTION) {
+        if (sp.solved) {
             return branches;
         }
 
-        List<ConceptPatternNode> cis    = sp.left.conjunctions;  // C1…Cn
+        List<ConceptPatternNode> cis    = ConceptPatternOps.topLevelAtoms(sp.left); // C1…Cn
         ConceptPatternNode D    = sp.right;
         int                        idx  = gamma.indexOfIdentity(sp);
 
