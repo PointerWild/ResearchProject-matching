@@ -114,7 +114,7 @@ public class MutationRule {
         //Go through all the GCIs in TBox
         for (var gci : elAnalyze.getTBoxGCIs()) {
             var As = gci.getKey();
-            var B  = gci.getValue();
+            var B = gci.getValue();
             // 1)  A₁⊓…⊓Aₖ ⊑ₜ B
             ConceptPatternNode conjA = ConceptPatternNode.conj(As);
             /*
@@ -123,7 +123,7 @@ public class MutationRule {
              * A1 ⊓ ... ⊓ Ak ⊑T B
              */
             ConceptPatternNode conjunction = ConceptPatternNode.conj(As);
-            if (!elAnalyze.subsumes(conjunction, B))  continue;
+            if (!elAnalyze.subsumes(conjunction, B)) continue;
 
 
             // 2) for each Aη，at least find one Ci which decompose successfully
@@ -133,7 +133,7 @@ public class MutationRule {
                 boolean found = false;
                 for (ConceptPatternNode Ci : cis) {
                     DecAnalyze.DecResult result = dec.dec(Ci, A);
-                    if (result.success  ) {
+                    if (result.success) {
                         allSubGoals.addAll(result.subGoals);
                         found = true;
                         /*
@@ -154,7 +154,7 @@ public class MutationRule {
 
             // 3) decompose B ⊑? D
             DecAnalyze.DecResult rd = dec.dec(B, sp.right);
-            if (!rd.success ) continue;
+            if (!rd.success) continue;
 
             // 4)  For that GCI branch, construct a new Gamma
             Gamma copy = gamma.copy();
@@ -176,19 +176,25 @@ public class MutationRule {
     /**
      * Enumerate all feasible mutation branches for s = C₁⊓…⊓Cₙ ⊑? D in Γ.
      *
-     * @param sp          the unsolved conjunction subsumption to mutate
-     * @param gamma       the current Gamma
-     * @param decFunc     a cached Dec function: Dec(c,a) → DecResult
-     * @param gciByRight  precomputed index: B → all left‐atom lists A₁…Aₖ
-     * @param elAnalyze   to call subsumes for final check (should always succeed for these GCIs)
+     * @param sp         the unsolved conjunction subsumption to mutate
+     * @param gamma      the current Gamma
+     * @param decFunc    a cached Dec function: Dec(c,a) → DecResult
+     * @param gciByRight precomputed index: B → all left‐atom lists A₁…Aₖ
+     * @param elAnalyze  to call subsumes for final check (should always succeed for these GCIs)
      * @return a list of new Gamma branches, one per viable GCI
      */
     public static List<Gamma> applyAll(
             SubsumptionPattern sp,
             Gamma gamma,
-            BiFunction<ConceptPatternNode, ConceptPatternNode,DecAnalyze.DecResult> decFunc,
-            Map<ConceptPatternNode,List<List<ConceptPatternNode>>> gciByRight,
+            BiFunction<ConceptPatternNode, ConceptPatternNode, DecAnalyze.DecResult> decFunc,
+            Map<ConceptPatternNode, List<List<ConceptPatternNode>>> gciByRight,
             ELAnalyze elAnalyze) {
+
+        Objects.requireNonNull(sp, "sp cannot be null");
+        Objects.requireNonNull(gamma, "gamma cannot be null");
+        Objects.requireNonNull(decFunc, "decFunc cannot be null");
+        Objects.requireNonNull(gciByRight, "gciByRight cannot be null");
+        Objects.requireNonNull(elAnalyze, "elAnalyze cannot be null");
 
         List<Gamma> branches = new ArrayList<>();
         // Only apply to unsolved conjunction‐left patterns
@@ -196,59 +202,90 @@ public class MutationRule {
             return branches;
         }
 
-        List<ConceptPatternNode> cis    = ConceptPatternOps.topLevelAtoms(sp.left); // C1…Cn
-        ConceptPatternNode D    = sp.right;
-        int                        idx  = gamma.indexOfIdentity(sp);
+        /*
+         * Mutation runs only after eager rules have been saturated.
+         */
+        if (sp.left.type == ConceptPatternNode.Type.VARIABLE || sp.right.type == ConceptPatternNode.Type.VARIABLE) {
+            throw new IllegalStateException(
+                    "Mutation must only run after eager rules are saturated: " + sp
+            );
+        }
+
+        List<ConceptPatternNode> cis = ConceptPatternOps.topLevelAtoms(sp.left); // C1…Cn
+        ConceptPatternNode D = sp.right;
+
+        int idx = gamma.indexOfIdentity(sp);
+        if (idx < 0) {
+            throw new IllegalArgumentException(
+                    "The supplied subsumption pattern does not belong to Gamma."
+            );
+        }
 
         // Fetch only the GCIs whose right side is D
-        var candidateLists = gciByRight.getOrDefault(D, Collections.emptyList());
+        //var candidateLists = gciByRight.getOrDefault(D, Collections.emptyList());
 
-        for (List<ConceptPatternNode> As : candidateLists) {
-            // 1) For each Aη in this list, find some Ci that can decompose
-            List<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> allSubGoals = new ArrayList<>();
-            boolean mappingOK = true;
+        for (var indexedEntry : gciByRight.entrySet()) {
+            ConceptPatternNode B = indexedEntry.getKey();
+            List<List<ConceptPatternNode>> candidateLists = indexedEntry.getValue();
 
-            for (ConceptPatternNode A : As) {
-                boolean found = false;
-                for (ConceptPatternNode C : cis) {
-                    DecAnalyze.DecResult r = decFunc.apply(C, A);
-                    if (r != null && r.success) {
-                        allSubGoals.addAll(r.subGoals);
-                        found = true;
+
+            for (List<ConceptPatternNode> As : candidateLists) {
+                /*
+                 * Verify:
+                 * A₁ ⊓ ... ⊓ Aₖ ⊑T B
+                 */
+                ConceptPatternNode conjA = ConceptPatternNode.conj(As);
+                if (!elAnalyze.subsumes(conjA, B)) continue;
+
+                // 1) For each Aη in this list, find some Ci that can decompose
+                List<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> allSubGoals = new ArrayList<>();
+                boolean mappingOK = true;
+
+                for (ConceptPatternNode A : As) {
+                    boolean found = false;
+                    for (ConceptPatternNode C : cis) {
+                        DecAnalyze.DecResult r = decFunc.apply(C, A);
+                        if (r != null && r.success) {
+                            allSubGoals.addAll(r.subGoals);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        mappingOK = false;
                         break;
                     }
                 }
-                if (!found) {
-                    mappingOK = false;
-                    break;
+                if (!mappingOK) {
+                    // this GCI cannot be applied
+                    continue;
                 }
-            }
-            if (!mappingOK) {
-                // this GCI cannot be applied
-                continue;
-            }
 
-            // 2) Finally decompose B ⊑? D (usually trivial since B == D if indexed correctly)
-            DecAnalyze.DecResult finalRes = decFunc.apply(D, D);
-            if (finalRes == null || !finalRes.success) {
-                // should rarely happen—but if so, skip
-                continue;
-            }
-            allSubGoals.addAll(finalRes.subGoals);
+                // 2) Finally decompose B ⊑? D (usually trivial since B == D if indexed correctly)
+                DecAnalyze.DecResult finalRes = decFunc.apply(B, D);
+                if (finalRes == null || !finalRes.success) {
+                    // should rarely happen—but if so, skip
+                    continue;
+                }
+                allSubGoals.addAll(finalRes.subGoals);
 
-            // 3) Build a fresh Gamma branch
-            Gamma copy = gamma.copy();
-            SubsumptionPattern spCopy = copy.getAll().get(idx);
-            // add every generated sub‐goal
-            for (var e : allSubGoals) {
-                copy.add(e.getKey(), e.getValue());
+                // 3) Build a fresh Gamma branch
+                Gamma copy = gamma.copy();
+                SubsumptionPattern spCopy = copy.getAll().get(idx);
+                // add every generated sub‐goal
+                for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : allSubGoals) {
+                    copy.add(e.getKey(), e.getValue());
+                }
+
+                for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : finalRes.subGoals) {
+                    copy.add(e.getKey(), e.getValue());
+                }
+                spCopy.solved = true;
+                branches.add(copy);
             }
-            spCopy.solved = true;
-            branches.add(copy);
         }
-
         return branches;
     }
-
-
 }
+
+
