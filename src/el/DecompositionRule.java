@@ -21,9 +21,18 @@ public final class DecompositionRule {
     private DecompositionRule() {
     }
 
+
     /**
-     * Applies the first successful decomposition directly to Gamma.
+     * Applies the first successful Decomposition choice directly to Gamma.
+     *
+     * This method represents one concrete non-deterministic choice.
+     * It must not be used as the only Decomposition path in the complete
+     * deterministic DFS matcher, because later successful choices would
+     * otherwise be omitted.
+     *
+     * GoalOrientedMatcher should use applyAll().
      */
+    @Deprecated
     public static boolean apply(
             SubsumptionPattern sp,
             Gamma gamma,
@@ -47,7 +56,7 @@ public final class DecompositionRule {
                             sp.right
                     );
 
-            if (result == null || !result.success) {
+            if (!result.success) {
                 continue;
             }
 
@@ -75,11 +84,21 @@ public final class DecompositionRule {
             Gamma gamma,
             DecAnalyze dec
     ) {
+
         List<Gamma> branches =
                 new ArrayList<>();
 
         if (sp.solved) {
             return branches;
+        }
+
+        if (sp.left.type == ConceptPatternNode.Type.VARIABLE
+                || sp.right.type == ConceptPatternNode.Type.VARIABLE) {
+
+            throw new IllegalStateException(
+                    "Decomposition must only run after eager rules are saturated: "
+                            + sp
+            );
         }
 
         int originalIndex =
@@ -111,7 +130,7 @@ public final class DecompositionRule {
                             sp.right
                     );
 
-            if (result == null || !result.success) {
+            if (!result.success) {
                 continue;
             }
 
@@ -142,16 +161,45 @@ public final class DecompositionRule {
      * A non-conjunction is represented as a singleton list because it
      * corresponds to the n = 1 case.
      */
-    private static List<ConceptPatternNode> getTopLevelConjuncts(
-            ConceptPatternNode left
-    ) {
-        if (left.type
-                == ConceptPatternNode.Type.CONJUNCTION) {
-            return left.conjunctions;
+    private static List<ConceptPatternNode> getTopLevelConjuncts(ConceptPatternNode left) {
+        List<ConceptPatternNode> result = new ArrayList<>();
+
+        collectTopLevelConjuncts(left, result);
+
+        return List.copyOf(result);
+    }
+
+    private static void collectTopLevelConjuncts(ConceptPatternNode node,
+                                                 List<ConceptPatternNode> result) {
+        if (node.type == ConceptPatternNode.Type.TOP) {
+            /*
+             * Tau is the empty conjunction.
+             */
+            return;
         }
 
-        return List.of(left);
+        if (node.type == ConceptPatternNode.Type.CONJUNCTION) {
+            if (node.conjunctions == null) {
+                throw new IllegalStateException(
+                        "CONJUNCTION node has no operands: " + node
+                );
+            }
+
+            for (ConceptPatternNode child : node.conjunctions) {
+                collectTopLevelConjuncts(child, result);
+            }
+
+            return;
+        }
+
+        /*
+         * VARIABLE, CONCEPT_NAME and EXISTENTIAL are atoms.
+         *
+         * Do not enter an existential restriction's filler.
+         */
+        result.add(node);
     }
+
 
     /**
      * Adds all Dec-generated subgoals to Gamma.
@@ -162,9 +210,7 @@ public final class DecompositionRule {
                     ConceptPatternNode,
                     ConceptPatternNode>> subGoals
     ) {
-        if (subGoals == null) {
-            return;
-        }
+
 
         for (SimpleEntry<
                 ConceptPatternNode,
