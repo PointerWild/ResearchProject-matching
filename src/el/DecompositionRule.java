@@ -2,6 +2,7 @@ package el;
 
 import el.structure.ConceptPatternNode;
 import el.structure.SubsumptionPattern;
+import el.structure.ConceptPatternOps;
 
 import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
@@ -46,8 +47,7 @@ public final class DecompositionRule {
          * A conjunction produces multiple candidates.
          * A single atom produces one candidate.
          */
-        List<ConceptPatternNode> conjuncts =
-                getTopLevelConjuncts(sp.left);
+        List<ConceptPatternNode> conjuncts = ConceptPatternOps.topLevelAtoms(sp.left);
 
         for (ConceptPatternNode ci : conjuncts) {
             DecAnalyze.DecResult result =
@@ -120,8 +120,7 @@ public final class DecompositionRule {
          *
          * C1 ⊑? D
          */
-        List<ConceptPatternNode> conjuncts =
-                getTopLevelConjuncts(sp.left);
+        List<ConceptPatternNode> conjuncts = ConceptPatternOps.topLevelAtoms(sp.left);
 
         for (ConceptPatternNode ci : conjuncts) {
             DecAnalyze.DecResult result =
@@ -153,51 +152,6 @@ public final class DecompositionRule {
         }
 
         return branches;
-    }
-
-    /**
-     * Returns the operands of a top-level conjunction.
-     *
-     * A non-conjunction is represented as a singleton list because it
-     * corresponds to the n = 1 case.
-     */
-    private static List<ConceptPatternNode> getTopLevelConjuncts(ConceptPatternNode left) {
-        List<ConceptPatternNode> result = new ArrayList<>();
-
-        collectTopLevelConjuncts(left, result);
-
-        return List.copyOf(result);
-    }
-
-    private static void collectTopLevelConjuncts(ConceptPatternNode node,
-                                                 List<ConceptPatternNode> result) {
-        if (node.type == ConceptPatternNode.Type.TOP) {
-            /*
-             * Tau is the empty conjunction.
-             */
-            return;
-        }
-
-        if (node.type == ConceptPatternNode.Type.CONJUNCTION) {
-            if (node.conjunctions == null) {
-                throw new IllegalStateException(
-                        "CONJUNCTION node has no operands: " + node
-                );
-            }
-
-            for (ConceptPatternNode child : node.conjunctions) {
-                collectTopLevelConjuncts(child, result);
-            }
-
-            return;
-        }
-
-        /*
-         * VARIABLE, CONCEPT_NAME and EXISTENTIAL are atoms.
-         *
-         * Do not enter an existential restriction's filler.
-         */
-        result.add(node);
     }
 
 

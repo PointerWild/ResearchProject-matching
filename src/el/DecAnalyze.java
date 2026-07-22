@@ -1,6 +1,7 @@
 package el;
 
 import el.structure.ConceptPatternNode;
+import el.structure.ConceptPatternOps;
 
 import java.util.*;
 import java.util.AbstractMap.SimpleEntry;
@@ -197,7 +198,7 @@ public final class DecAnalyze {
          *
          * A, ∃s.(B ⊓ C)
          */
-        List<ConceptPatternNode> dis = splitTopLevelConjunction(fillD);
+        List<ConceptPatternNode> dis =  ConceptPatternOps.topLevelAtoms(fillD);
 
         Set<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> subGoals =
                 new LinkedHashSet<>();
@@ -308,61 +309,6 @@ public final class DecAnalyze {
                 || node.type == ConceptPatternNode.Type.EXISTENTIAL;
     }
 
-    /**
-     * Splits a possible top-level conjunction recursively.
-     *
-     * A non-conjunction atom becomes a singleton list.
-     *
-     * Tau contributes no atom because Tau is the empty conjunction.
-     *
-     * Existential restrictions remain complete atoms. Their fillers
-     * are not entered by this method.
-     */
-    private List<ConceptPatternNode> splitTopLevelConjunction(ConceptPatternNode node) {
-        List<ConceptPatternNode> result = new ArrayList<>();
-
-        collectTopLevelAtoms(node, result);
-
-        return List.copyOf(result);
-    }
-
-    /**
-     * Recursive helper for splitTopLevelConjunction().
-     */
-    private void collectTopLevelAtoms(
-            ConceptPatternNode node,
-            List<ConceptPatternNode> result
-    ) {
-        Objects.requireNonNull(
-                node,
-                "Concept expression cannot be null"
-        );
-
-        switch (node.type) {
-            case TOP -> {
-                /*
-                 * Tau represents the empty conjunction.
-                 * It contributes no atom.
-                 */
-            }
-
-            case CONJUNCTION -> {
-                if (node.conjunctions == null) {
-                    throw new IllegalStateException(
-                            "CONJUNCTION node has no operands: "
-                                    + node
-                    );
-                }
-
-                for (ConceptPatternNode child : node.conjunctions) {
-                    collectTopLevelAtoms(child, result);
-                }
-            }
-
-            case VARIABLE, CONCEPT_NAME, EXISTENTIAL ->
-                    result.add(node);
-        }
-    }
 
     /**
      * Returns true iff the complete expression contains no variable.
