@@ -170,17 +170,16 @@ public class GoalOrientedMatcher {
                 }
             }
 
-            // -- Mutation branch --
-//            for (Gamma gammaMut : MutationRule.applyAll(sp, gamma, decFunc, gciByRight, elAnalyze)){
-//                if (dfs(gammaMut)) {
-//                    return true;
-//                }
-//            };
-            for (Gamma gammaMut : MutationRule.applyAll(sp, gamma, decAnalyze, elAnalyze)) {
-                if (dfs(gammaMut)) {
-                    return true;
-                }
-            }
+        /*
+         * Mutation branches are generated lazily.
+         *
+         * Each complete branch is immediately sent to dfs().
+         * The first successful branch stops the search.
+         */
+        boolean mutationSucceeded = MutationRule.tryBranches(sp, gamma, decAnalyze, elAnalyze, this::dfs);
+        if (mutationSucceeded) {
+            return true;
+        }
 
         // neither branch succeeded → backtrack failure
         return false;

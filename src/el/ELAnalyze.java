@@ -2,6 +2,7 @@ package el;
 
 import el.structure.ConceptName;
 import el.structure.ConceptPatternNode;
+import el.structure.ConceptPatternOps;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -549,39 +550,50 @@ public class ELAnalyze {
             ConceptPatternNode right =
                     ConceptPatternNode.parse(parts[1]);
 
-            if (right.type
-                    == ConceptPatternNode.Type.CONJUNCTION) {
-                throw new IllegalArgumentException(
-                        "The right side of a normalized TBox GCI "
-                                + "must be an atom: "
-                                + gci
+            List<ConceptPatternNode> leftAtoms =
+                    topLevelAtoms(
+                            left
+                    );
+
+            /*
+             * A general EL-TBox may contain:
+             *
+             *     L ⊑ B1 ⊓ ... ⊓ Bm
+             *
+             * Since:
+             *
+             *     L ⊑ B1 ⊓ ... ⊓ Bm
+             *
+             * iff:
+             *
+             *     L ⊑ B1, ..., L ⊑ Bm
+             *
+             * expose one candidate for each top-level RHS atom.
+             */
+            List<ConceptPatternNode> rightAtoms =
+                    topLevelAtoms(
+                            right
+                    );
+
+            for (ConceptPatternNode rightAtom
+                    : rightAtoms) {
+
+                result.add(
+                        new SimpleEntry<>(
+                                new ArrayList<>(
+                                        leftAtoms
+                                ),
+                                rightAtom
+                        )
                 );
             }
-
-            result.add(
-                    new SimpleEntry<>(
-                            new ArrayList<>(
-                                    topLevelAtoms(left)
-                            ),
-                            right
-                    )
-            );
         }
 
         return result;
     }
 
-    private List<ConceptPatternNode> topLevelAtoms(
-            ConceptPatternNode node
-    ) {
-        if (node.type
-                == ConceptPatternNode.Type.CONJUNCTION) {
-            return new ArrayList<>(
-                    node.conjunctions
-            );
-        }
-
-        return Collections.singletonList(node);
+    private List<ConceptPatternNode> topLevelAtoms( ConceptPatternNode node ) {
+        return ConceptPatternOps.topLevelAtoms(node);
     }
 
     private boolean containsVariable(

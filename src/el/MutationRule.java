@@ -5,7 +5,7 @@ import el.structure.ConceptPatternNode;
 import el.structure.SubsumptionPattern;
 import el.structure.ConceptPatternOps;
 
-import java.util.function.BiFunction;
+import java.util.function.Predicate;
 import java.util.*;
 import java.util.AbstractMap.SimpleEntry;
 
@@ -25,7 +25,7 @@ public class MutationRule {
             List<ConceptPatternNode> leftAtoms = entry.getKey();
             ConceptPatternNode B = entry.getValue();
             // Only keep those GCIs whose left‐conjunction truly subsumes B
-            ConceptPatternNode conjA = ConceptPatternNode.conj(leftAtoms);
+            ConceptPatternNode conjA = conjunctionOf(leftAtoms);
             if (el.subsumes(conjA, B)) {
                 index
                         .computeIfAbsent(B, __ -> new ArrayList<>())
@@ -37,17 +37,64 @@ public class MutationRule {
 
 
     /**
-     * Enumerate all feasible mutation branches:
-     * for each GCI (A₁⊓…⊓Aₖ ⊑ₜ B) where both the decomposition of each Aη and the check B ⊑? D succeed,
-     * clone the Gamma and apply that branch.
+     * Compatibility API used by existing unit tests.
+     *
+     * It collects every generated branch into a List.
+     * Production DFS should use tryBranches(), which evaluates branches lazily.
      */
     public static List<Gamma> applyAll(
             SubsumptionPattern sp,
             Gamma gamma,
             DecAnalyze dec,
-            ELAnalyze elAnalyze) {
-        //check applable
+            ELAnalyze elAnalyze
+    ) {
+        List<Gamma> branches =
+                new ArrayList<>();
 
+        /*
+         * Always return false from the evaluator so tryBranches() continues
+         * generating all branches for tests and diagnostics.
+         */
+        tryBranches(
+                sp,
+                gamma,
+                dec,
+                elAnalyze,
+                branch -> {
+                    branches.add(branch);
+                    return false;
+                }
+        );
+
+        return branches;
+    }
+    /**
+     * Lazily tries Mutation branches.
+     *
+     * A branch is created only after one complete choice has been made:
+     *
+     *     A1 -> Ci1
+     *     A2 -> Ci2
+     *     ...
+     *     Ak -> Cik
+     *
+     * Each complete branch is immediately passed to branchEvaluator.
+     *
+     * @param sp              unsolved target subsumption
+     * @param gamma           current matching problem
+     * @param dec             Dec implementation
+     * @param elAnalyze       semantic TBox access
+     * @param branchEvaluator usually GoalOrientedMatcher::dfs
+     * @return true as soon as one complete branch succeeds;
+     *         false only when every possible branch fails
+     */
+    public static boolean tryBranches(
+            SubsumptionPattern sp,
+            Gamma gamma,
+            DecAnalyze dec,
+            ELAnalyze elAnalyze,
+            Predicate<Gamma> branchEvaluator
+    ) {
         Objects.requireNonNull(
                 sp,
                 "sp cannot be null"
@@ -68,16 +115,26 @@ public class MutationRule {
                 "elAnalyze cannot be null"
         );
 
-        List<Gamma> branches = new ArrayList<>();
-        if (sp.solved) {
-            return branches;
-        }
+        Objects.requireNonNull(
+                branchEvaluator,
+                "branchEvaluator cannot be null"
+        );
+
         /*
-         * Mutation is considered only after eager rules have been
-         * saturated. Therefore neither complete side may be a variable.
+         * A solved subsumption must not be mutated again.
          */
-        if (sp.left.type == ConceptPatternNode.Type.VARIABLE
-                || sp.right.type == ConceptPatternNode.Type.VARIABLE) {
+        if (sp.solved) {
+            return false;
+        }
+
+        /*
+         * Mutation runs only after eager saturation.
+         * Therefore neither complete side may itself be a variable.
+         */
+        if (sp.left.type
+                == ConceptPatternNode.Type.VARIABLE
+                || sp.right.type
+                == ConceptPatternNode.Type.VARIABLE) {
 
             throw new IllegalStateException(
                     "Mutation must only run after eager rules are saturated: "
@@ -88,7 +145,6 @@ public class MutationRule {
         int originalIndex =
                 gamma.indexOfIdentity(sp);
 
-
         if (originalIndex < 0) {
             throw new IllegalArgumentException(
                     "The supplied subsumption pattern "
@@ -97,195 +153,311 @@ public class MutationRule {
         }
 
         /*
-         * Supports:
+         * s = C1 ⊓ ... ⊓ Cn ⊑? D
          *
-         * n = 1:
-         * C1 ⊑? D
-         *
-         * n > 1:
-         * C1 ⊓ ... ⊓ Cn ⊑? D
-         *
-         * Tau becomes the empty atom list.
+         * For n = 1, cis contains one atom.
+         * For a Tau left side, cis is empty.
          */
+        List<ConceptPatternNode> cis =
+                ConceptPatternOps.topLevelAtoms(
+                        sp.left
+                );
 
-        List<ConceptPatternNode> cis = ConceptPatternOps.topLevelAtoms(sp.left);
+        /*
+         * Each candidate represents:
+         *
+         *     A1 ⊓ ... ⊓ Ak ⊑T B
+         */
+        for (var candidate
+                : elAnalyze.getTBoxGCIs()) {
 
+            List<ConceptPatternNode> as =
+                    candidate.getKey();
 
-        //Go through all the GCIs in TBox
-        for (var gci : elAnalyze.getTBoxGCIs()) {
-            var As = gci.getKey();
-            var B = gci.getValue();
-            // 1)  A₁⊓…⊓Aₖ ⊑ₜ B
-            ConceptPatternNode conjA = ConceptPatternNode.conj(As);
+            ConceptPatternNode b =
+                    candidate.getValue();
+
             /*
-             * Check:
+             * Verify the semantic premise of Mutation:
              *
-             * A1 ⊓ ... ⊓ Ak ⊑T B
+             *     A1 ⊓ ... ⊓ Ak ⊑T B
+             *
+             * conjunctionOf([]) returns Tau and therefore supports k = 0.
              */
-            ConceptPatternNode conjunction = ConceptPatternNode.conj(As);
-            if (!elAnalyze.subsumes(conjunction, B)) continue;
+            ConceptPatternNode antecedent =
+                    conjunctionOf(as);
 
-
-            // 2) for each Aη，at least find one Ci which decompose successfully
-            boolean mappingSucceeded = true;
-            List<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> allSubGoals = new ArrayList<>();
-            for (ConceptPatternNode A : As) {
-                boolean found = false;
-                for (ConceptPatternNode Ci : cis) {
-                    DecAnalyze.DecResult result = dec.dec(Ci, A);
-                    if (result.success) {
-                        allSubGoals.addAll(result.subGoals);
-                        found = true;
-                        /*
-                         * Temporary first-success behavior.
-                         *
-                         * This break will be removed when all successful
-                         * Ci combinations are enumerated.
-                         */
-                        break;
-                    }
-                }
-                if (!found) {
-                    mappingSucceeded = false;
-                    break;
-                }
+            if (!elAnalyze.subsumes(
+                    antecedent,
+                    b
+            )) {
+                continue;
             }
-            if (!mappingSucceeded) continue;
 
-            // 3) decompose B ⊑? D
-            DecAnalyze.DecResult rd = dec.dec(B, sp.right);
-            if (!rd.success) continue;
+            /*
+             * The final Dec(B ⊑? D) is independent of the choices made for
+             * A1, ..., Ak, so compute it once for this candidate.
+             */
+            DecAnalyze.DecResult finalResult =
+                    dec.dec(
+                            b,
+                            sp.right
+                    );
 
-            // 4)  For that GCI branch, construct a new Gamma
-            Gamma copy = gamma.copy();
-            SubsumptionPattern spCopy = copy.getAll().get(originalIndex);
-            // Add the sub-goals produced by decomposing
-            for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : allSubGoals) {
-                copy.add(e.getKey(), e.getValue());
+            if (!finalResult.success) {
+                continue;
             }
-            // Add the sub-goals generated by decomposing B ⊑? D
-            for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : rd.subGoals) {
-                copy.add(e.getKey(), e.getValue());
+
+            /*
+             * Enumerate the Cartesian product of all successful choices:
+             *
+             * A1 -> one successful Ci
+             * A2 -> one successful Ci
+             * ...
+             * Ak -> one successful Ci
+             *
+             * Each completed combination is immediately evaluated.
+             */
+            boolean succeeded =
+                    tryMappings(
+                            0,
+                            as,
+                            cis,
+                            dec,
+                            gamma,
+                            originalIndex,
+                            finalResult.subGoals,
+                            new ArrayList<>(),
+                            branchEvaluator
+                    );
+
+            if (succeeded) {
+                /*
+                 * One complete DFS branch succeeded.
+                 * No further Mutation candidates are needed.
+                 */
+                return true;
             }
-            spCopy.solved = true;
-            branches.add(copy);
-        }
-        return branches;
-    }
-
-    /**
-     * Enumerate all feasible mutation branches for s = C₁⊓…⊓Cₙ ⊑? D in Γ.
-     *
-     * @param sp         the unsolved conjunction subsumption to mutate
-     * @param gamma      the current Gamma
-     * @param decFunc    a cached Dec function: Dec(c,a) → DecResult
-     * @param gciByRight precomputed index: B → all left‐atom lists A₁…Aₖ
-     * @param elAnalyze  to call subsumes for final check (should always succeed for these GCIs)
-     * @return a list of new Gamma branches, one per viable GCI
-     */
-    public static List<Gamma> applyAll(
-            SubsumptionPattern sp,
-            Gamma gamma,
-            BiFunction<ConceptPatternNode, ConceptPatternNode, DecAnalyze.DecResult> decFunc,
-            Map<ConceptPatternNode, List<List<ConceptPatternNode>>> gciByRight,
-            ELAnalyze elAnalyze) {
-
-        Objects.requireNonNull(sp, "sp cannot be null");
-        Objects.requireNonNull(gamma, "gamma cannot be null");
-        Objects.requireNonNull(decFunc, "decFunc cannot be null");
-        Objects.requireNonNull(gciByRight, "gciByRight cannot be null");
-        Objects.requireNonNull(elAnalyze, "elAnalyze cannot be null");
-
-        List<Gamma> branches = new ArrayList<>();
-        // Only apply to unsolved conjunction‐left patterns
-        if (sp.solved) {
-            return branches;
         }
 
         /*
-         * Mutation runs only after eager rules have been saturated.
+         * Every candidate and every Ci combination failed.
          */
-        if (sp.left.type == ConceptPatternNode.Type.VARIABLE || sp.right.type == ConceptPatternNode.Type.VARIABLE) {
-            throw new IllegalStateException(
-                    "Mutation must only run after eager rules are saturated: " + sp
+        return false;
+    }
+
+    /**
+     * Recursively enumerates all successful choices of Ci for each Aη.
+     *
+     * This is a depth-first Cartesian-product enumeration.
+     *
+     * It does not store every Gamma branch in memory. Once a complete
+     * combination is reached, one fresh Gamma is constructed and evaluated.
+     */
+    private static boolean tryMappings(
+            int aIndex,
+            List<ConceptPatternNode> as,
+            List<ConceptPatternNode> cis,
+            DecAnalyze dec,
+            Gamma originalGamma,
+            int originalTargetIndex,
+            Set<SimpleEntry<
+                    ConceptPatternNode,
+                    ConceptPatternNode>> finalSubGoals,
+            List<SimpleEntry<
+                    ConceptPatternNode,
+                    ConceptPatternNode>> accumulatedSubGoals,
+            Predicate<Gamma> branchEvaluator
+    ) {
+        /*
+         * Base case:
+         *
+         * Every Aη has now selected one Ci.
+         *
+         * When as is empty, aIndex == as.size() immediately.
+         * This is exactly the k = 0 case.
+         */
+        if (aIndex == as.size()) {
+            Gamma branch =
+                    createBranch(
+                            originalGamma,
+                            originalTargetIndex,
+                            accumulatedSubGoals,
+                            finalSubGoals
+                    );
+
+            /*
+             * This is the correct short-circuit position:
+             *
+             * stop only if the complete recursive DFS branch succeeds.
+             */
+            return branchEvaluator.test(
+                    branch
             );
         }
 
-        List<ConceptPatternNode> cis = ConceptPatternOps.topLevelAtoms(sp.left); // C1…Cn
-        ConceptPatternNode D = sp.right;
+        ConceptPatternNode currentA =
+                as.get(aIndex);
 
-        int idx = gamma.indexOfIdentity(sp);
-        if (idx < 0) {
-            throw new IllegalArgumentException(
-                    "The supplied subsumption pattern does not belong to Gamma."
+        /*
+         * Every successful Dec(Ci ⊑? Aη) is an alternative OR branch.
+         */
+        for (ConceptPatternNode ci : cis) {
+            DecAnalyze.DecResult result =
+                    dec.dec(
+                            ci,
+                            currentA
+                    );
+
+            if (!result.success) {
+                continue;
+            }
+
+            /*
+             * Record how many subgoals existed before selecting this Ci.
+             */
+            int checkpoint =
+                    accumulatedSubGoals.size();
+
+            accumulatedSubGoals.addAll(
+                    result.subGoals
             );
-        }
 
-        // Fetch only the GCIs whose right side is D
-        //var candidateLists = gciByRight.getOrDefault(D, Collections.emptyList());
+            /*
+             * Continue choosing a Ci for the next Aη.
+             */
+            boolean succeeded =
+                    tryMappings(
+                            aIndex + 1,
+                            as,
+                            cis,
+                            dec,
+                            originalGamma,
+                            originalTargetIndex,
+                            finalSubGoals,
+                            accumulatedSubGoals,
+                            branchEvaluator
+                    );
 
-        for (var indexedEntry : gciByRight.entrySet()) {
-            ConceptPatternNode B = indexedEntry.getKey();
-            List<List<ConceptPatternNode>> candidateLists = indexedEntry.getValue();
+            /*
+             * Restore the accumulated list before trying the next Ci.
+             *
+             * This is the backtracking step.
+             */
+            while (accumulatedSubGoals.size()
+                    > checkpoint) {
 
+                accumulatedSubGoals.remove(
+                        accumulatedSubGoals.size() - 1
+                );
+            }
 
-            for (List<ConceptPatternNode> As : candidateLists) {
+            if (succeeded) {
                 /*
-                 * Verify:
-                 * A₁ ⊓ ... ⊓ Aₖ ⊑T B
+                 * One complete branch succeeded.
+                 * Stop enumerating sibling Ci choices.
                  */
-                ConceptPatternNode conjA = ConceptPatternNode.conj(As);
-                if (!elAnalyze.subsumes(conjA, B)) continue;
-
-                // 1) For each Aη in this list, find some Ci that can decompose
-                List<SimpleEntry<ConceptPatternNode, ConceptPatternNode>> allSubGoals = new ArrayList<>();
-                boolean mappingOK = true;
-
-                for (ConceptPatternNode A : As) {
-                    boolean found = false;
-                    for (ConceptPatternNode C : cis) {
-                        DecAnalyze.DecResult r = decFunc.apply(C, A);
-                        if (r != null && r.success) {
-                            allSubGoals.addAll(r.subGoals);
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        mappingOK = false;
-                        break;
-                    }
-                }
-                if (!mappingOK) {
-                    // this GCI cannot be applied
-                    continue;
-                }
-
-                // 2) Finally decompose B ⊑? D (usually trivial since B == D if indexed correctly)
-                DecAnalyze.DecResult finalRes = decFunc.apply(B, D);
-                if (finalRes == null || !finalRes.success) {
-                    // should rarely happen—but if so, skip
-                    continue;
-                }
-                allSubGoals.addAll(finalRes.subGoals);
-
-                // 3) Build a fresh Gamma branch
-                Gamma copy = gamma.copy();
-                SubsumptionPattern spCopy = copy.getAll().get(idx);
-                // add every generated sub‐goal
-                for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : allSubGoals) {
-                    copy.add(e.getKey(), e.getValue());
-                }
-
-                for (SimpleEntry<ConceptPatternNode, ConceptPatternNode> e : finalRes.subGoals) {
-                    copy.add(e.getKey(), e.getValue());
-                }
-                spCopy.solved = true;
-                branches.add(copy);
+                return true;
             }
         }
-        return branches;
+
+        /*
+         * No Ci choice for currentA led to a complete successful branch.
+         */
+        return false;
     }
+
+    /**
+     * Creates one independent Gamma for one complete Mutation choice.
+     */
+    private static Gamma createBranch(
+            Gamma originalGamma,
+            int originalTargetIndex,
+            Collection<SimpleEntry<
+                    ConceptPatternNode,
+                    ConceptPatternNode>> mappingSubGoals,
+            Collection<SimpleEntry<
+                    ConceptPatternNode,
+                    ConceptPatternNode>> finalSubGoals
+    ) {
+        /*
+         * Gamma.copy() creates new SubsumptionPattern objects and preserves
+         * their solved flags.
+         */
+        Gamma branch =
+                originalGamma.copy();
+
+        SubsumptionPattern targetCopy =
+                branch.getAll()
+                        .get(originalTargetIndex);
+
+        /*
+         * Add all subgoals generated by Dec(Ci ⊑? Aη).
+         */
+        for (SimpleEntry<
+                ConceptPatternNode,
+                ConceptPatternNode> subGoal
+                : mappingSubGoals) {
+
+            branch.add(
+                    subGoal.getKey(),
+                    subGoal.getValue()
+            );
+        }
+
+        /*
+         * Add all subgoals generated by Dec(B ⊑? D).
+         */
+        for (SimpleEntry<
+                ConceptPatternNode,
+                ConceptPatternNode> subGoal
+                : finalSubGoals) {
+
+            branch.add(
+                    subGoal.getKey(),
+                    subGoal.getValue()
+            );
+        }
+
+        /*
+         * Mark only the copied target as solved.
+         * The original Gamma remains unchanged.
+         */
+        targetCopy.solved = true;
+
+        return branch;
+    }
+
+    /**
+     * Constructs the conjunction represented by a list of atoms.
+     *
+     * Empty list  -> Tau
+     * One atom    -> that atom
+     * Multiple    -> conjunction
+     */
+    private static ConceptPatternNode conjunctionOf(
+            List<ConceptPatternNode> atoms
+    ) {
+        Objects.requireNonNull(
+                atoms,
+                "atoms cannot be null"
+        );
+
+        if (atoms.isEmpty()) {
+            return ConceptPatternNode.Tau();
+        }
+
+        if (atoms.size() == 1) {
+            return atoms.get(0);
+        }
+
+        return ConceptPatternNode.conj(
+                List.copyOf(atoms)
+        );
+    }
+
+
+
 }
 
 
