@@ -45,7 +45,7 @@ public final class EagerSolver {
      * @throws FailureException if an applicable eager rule fails its
      *                          semantic subsumption condition
      */
-    public boolean applyEager(
+    public void applyEager(
             List<SubsumptionPattern> gamma
     ) throws FailureException {
 
@@ -54,64 +54,43 @@ public final class EagerSolver {
                 "gamma cannot be null"
         );
 
-        SubsumptionPattern firstLeftVariable = null;
-
         for (SubsumptionPattern current : gamma) {
-            if (current == null || current.solved) {
-                continue;
-            }
+        	if (current != null & !current.solved ) {
+        		
+        		/*
+                 * Eager rule 1:
+                 *
+                 *     C ⊑? X
+                 *
+                 * Right-variable rules are processed first (Why was this desired?).
+                 */
+                if (current.right.type
+                        == ConceptPatternNode.Type.VARIABLE) {
 
-            /*
-             * Eager rule 1:
-             *
-             *     C ⊑? X
-             *
-             * Right-variable rules are processed first.
-             */
-            if (current.right.type
-                    == ConceptPatternNode.Type.VARIABLE) {
+                    applyRightVariableRule(
+                            current,
+                            gamma
+                    );
+                }
+                
+                /*
+                 * Eager rule 2:
+                 *
+                 *     X ⊑? D
+                 */     
+                
+                if (current.left.type
+                        == ConceptPatternNode.Type.VARIABLE) {
 
-                applyRightVariableRule(
-                        current,
-                        gamma
-                );
+                    applyLeftVariableRule(
+                            current,
+                            gamma
+                    );
 
-                return true;
-            }
+                }
 
-            /*
-             * Eager rule 2:
-             *
-             *     X ⊑? D
-             *
-             * Remember the first one, but process it only after confirming
-             * that no right-variable rule is available.
-             */
-            if (firstLeftVariable == null
-                    && current.left.type
-                    == ConceptPatternNode.Type.VARIABLE) {
-
-                firstLeftVariable = current;
-            }
+        	}
         }
-
-        if (firstLeftVariable != null) {
-            applyLeftVariableRule(
-                    firstLeftVariable,
-                    gamma
-            );
-
-            return true;
-        }
-
-        /*
-         * Critical:
-         *
-         * false means that no eager rule is applicable.
-         * GoalOrientedMatcher must now leave the eager loop and continue
-         * with decomposition or mutation.
-         */
-        return false;
     }
 
     /**
