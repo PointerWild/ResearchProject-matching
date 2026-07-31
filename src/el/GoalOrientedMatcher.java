@@ -140,15 +140,14 @@ public class GoalOrientedMatcher {
         dfsInvocationCount++;
 
         // —— (1) Eager phase ——
-        while (true) {
-            try {
-                boolean applied = eagerSolver.applyEager(gamma.getAll());
-                if (!applied) break;  // no more eager rules applicable
-            } catch (FailureException fe) {
-                // an eager rule was applicable but failed → prune this branch
-                return false;
-            }
+        
+        try {
+          eagerSolver.applyEager(gamma.getAll());
+        } catch (FailureException fe) {
+          // an eager rule was applicable but failed → prune this branch
+          return false;
         }
+        
 
         // after eager, check if all solved
         SubsumptionPattern next = gamma.nextUnsolved();

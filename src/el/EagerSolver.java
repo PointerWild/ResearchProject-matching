@@ -45,7 +45,19 @@ public final class EagerSolver {
      * @throws FailureException if an applicable eager rule fails its
      *                          semantic subsumption condition
      */
-    public void applyEager(
+    
+    /**
+     * The new version of the method traverse the whole list of subsumption constraints and tries to apply the eager rules
+     * whenever possible. This avoids going back and forth to the main dfs. It also eliminates the priority for the right-variable rule. 
+     * I do not see what can be gained from enforcing such a priority.
+     * 
+     * @param gamma all subsumption patterns in the current Gamma
+     * @return {@code true} if at least one rule was applied and one pattern was marked
+     *         as solved; {@code false} if no eager rule is applicable
+     * @throws FailureException if an applicable eager rule fails its
+     *                          semantic subsumption condition
+     */
+    public boolean applyEager(
             List<SubsumptionPattern> gamma
     ) throws FailureException {
 
@@ -53,6 +65,8 @@ public final class EagerSolver {
                 gamma,
                 "gamma cannot be null"
         );
+        
+        int applied_rules = 0;
 
         for (SubsumptionPattern current : gamma) {
         	if (current != null & !current.solved ) {
@@ -62,7 +76,7 @@ public final class EagerSolver {
                  *
                  *     C ⊑? X
                  *
-                 * Right-variable rules are processed first (Why was this desired?).
+                 * Right-variable rules are processed first (Not anymore. Why was this desired?).
                  */
                 if (current.right.type
                         == ConceptPatternNode.Type.VARIABLE) {
@@ -71,15 +85,15 @@ public final class EagerSolver {
                             current,
                             gamma
                     );
+                    
+                    applied_rules++;
                 }
-                
                 /*
                  * Eager rule 2:
-                 *
-                 *     X ⊑? D
-                 */     
-                
-                if (current.left.type
+                *
+                *     X ⊑? D
+                */     
+                else if (current.left.type
                         == ConceptPatternNode.Type.VARIABLE) {
 
                     applyLeftVariableRule(
@@ -87,10 +101,12 @@ public final class EagerSolver {
                             gamma
                     );
 
+                    applied_rules++;
                 }
 
         	}
         }
+        return (applied_rules > 0);
     }
 
     /**
@@ -136,11 +152,12 @@ public final class EagerSolver {
 
                 ConceptPatternNode right = related.right;
 
-                ensureGroundQuery(
+                /* This check is unnecessary. The justification is in the research paper.
+                 * ensureGroundQuery(
                         left,
                         right,
                         "right-variable"
-                );
+                );*/
 
                 boolean entailed =
                         elAnalyze.subsumes(
@@ -203,11 +220,12 @@ public final class EagerSolver {
 
                 ConceptPatternNode left = related.left;
 
-                ensureGroundQuery(
+                /*/* This check is unnecessary. The justification is in the research paper.
+                 * ensureGroundQuery(
                         left,
                         right,
                         "left-variable"
-                );
+                );*/
 
                 boolean entailed =
                         elAnalyze.subsumes(
