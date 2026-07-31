@@ -1,0 +1,4 @@
+A ⊑ B
+∃r.A ⊓ B ⊑ ∃s.(C ⊓ E)
+∃r.A ⊓ B ⊑ ∃s.(C ⊓ ∃t.D)
+∃r.B ⊑ A1 ⊓ A2 ⊓ A3

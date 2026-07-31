@@ -39,7 +39,7 @@ public final class Main {
      * are stored under src/.
      */
     private static final Path DEFAULT_TBOX_PATH =
-            Path.of("src", "TBox.txt");
+            Path.of("src", "TBox1.txt");
 
     private static final Path DEFAULT_GAMMA_PATH =
             Path.of("src", "gamma.txt");
