@@ -6,6 +6,7 @@ import el.structure.ConceptPatternOps;
 import java.util.*;
 import java.util.AbstractMap.SimpleEntry;
 
+
 /**
  * Implements the Dec function from Algorithm 5.1 / Figure 2.
  *
@@ -18,6 +19,20 @@ import java.util.AbstractMap.SimpleEntry;
  *    CONCEPT_NAME or EXISTENTIAL.
  *
  * Dec never returns null.
+ *
+ * DecompositionRule ─┐
+ *                    │
+ * MutationRule ──────┼──> DecAnalyze.dec()
+ *                    │          │
+ *                    │          ↓
+ *                    │       Cache
+ *                    │       /   \
+ *                    │     HIT   MISS
+ *                    │      │      │
+ *                    │      │      ↓
+ *                    │      │   real-compute
+ *                    │      │      │
+ *                    └──────┴──────┘
  */
 public final class DecAnalyze {
 
