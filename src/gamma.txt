@@ -1,6 +1,6 @@
-∃r.A⊓B ⊑∃s.(C⊓∃t._D_)
+∃r.A⊓B ⊑ ∃s.(C ⊓ ∃t._D_)
 ∃r.B ⊓ B ⊑ _CC_
 ∃r.B ⊑ _D_
-∃r.D ⊑∃s.(C⊓∃t._S_)
-∃t.C ⊑∃s.(B⊓∃t._CC_)
-∃r.B ⊑ ∃r._X_ ⊓ A1 ⊓ A2 ⊓ A3 //  Gamma normalization
+∃r.D ⊑ ∃s.(C⊓∃t._S_)
+∃t.C ⊑ ∃s.(B⊓∃t._CC_)
+∃r.B ⊑ ∃r._X_ ⊓ A1 ⊓ A2 ⊓ A3

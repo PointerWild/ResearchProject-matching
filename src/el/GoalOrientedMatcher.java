@@ -100,7 +100,10 @@ public class GoalOrientedMatcher {
         );
 
         dfsInvocationCount = 0;
-
+        long startTime = System.nanoTime();
+        long hitsBefore = decAnalyze.getCacheHits();
+        long missesBefore = decAnalyze.getCacheMisses();
+        boolean result;
 
 
         GammaNormalizationResult normalization =
@@ -112,23 +115,33 @@ public class GoalOrientedMatcher {
          * A false ground-ground constraint was discovered.
          */
         if (!normalization.isMatchable()) {
-            return false;
+            result = false;
+        }
+        else{
+            /*
+             * DFS receives only normalized constraints.
+             *
+             * The original Gamma is not modified.
+             */
+            /*
+             * DFS receives only normalized constraints.
+             * The original Gamma remains unchanged.
+             */
+            Gamma normalizedGamma = normalization.getNormalizedGamma();
+            result =  dfs(normalizedGamma);
+
         }
 
-        /*
-         * DFS receives only normalized constraints.
-         *
-         * The original Gamma is not modified.
-         */
-        /*
-         * DFS receives only normalized constraints.
-         * The original Gamma remains unchanged.
-         */
-        Gamma normalizedGamma =
-                normalization.getNormalizedGamma();
-        return dfs(
-                normalizedGamma
+        long endTime = System.nanoTime();
+        printBenchmarkStatistics(
+                result,
+                startTime,
+                endTime,
+                hitsBefore,
+                missesBefore
         );
+
+        return result;
     }
 
     /**
@@ -199,4 +212,102 @@ public class GoalOrientedMatcher {
         return dfsInvocationCount;
     }
 
+    /**
+     * Prints lightweight benchmark statistics
+     * for one complete matching run.
+     */
+    private void printBenchmarkStatistics(
+            boolean result,
+            long startTime,
+            long endTime,
+            long hitsBefore,
+            long missesBefore
+    ) {
+
+        long cacheHits = decAnalyze.getCacheHits() - hitsBefore;
+        long cacheMisses = decAnalyze.getCacheMisses() - missesBefore;
+        long decRequests = cacheHits + cacheMisses;
+        long actualDecCalculations = cacheMisses;
+
+        double elapsedMs =  (endTime - startTime)  / 1_000_000.0;
+
+        double hitRate;
+
+        if (decRequests == 0) {
+
+            hitRate = 0.0;
+
+        } else {
+
+            hitRate =
+                    100.0
+                            * cacheHits
+                            / decRequests;
+        }
+
+
+        /*
+         * Console output.
+         */
+        System.out.println();
+
+        System.out.println(
+                "========== MATCHING BENCHMARK =========="
+        );
+
+        System.out.printf(
+                "Result          : %s%n",
+                result
+                        ? "SUCCESS"
+                        : "FAILURE"
+        );
+
+        System.out.printf(
+                "Elapsed time    : %.3f ms%n",
+                elapsedMs
+        );
+
+        System.out.printf(
+                "Dec requests    : %d%n",
+                decRequests
+        );
+
+        System.out.printf(
+                "Actual Dec calc : %d%n",
+                actualDecCalculations
+        );
+
+        System.out.printf(
+                "Cache hits      : %d%n",
+                cacheHits
+        );
+
+        System.out.printf(
+                "Cache misses    : %d%n",
+                cacheMisses
+        );
+
+        System.out.printf(
+                "Cache hit rate  : %.2f%%%n",
+                hitRate
+        );
+
+        System.out.printf(
+                "Cache size      : %d%n",
+                decAnalyze.getCacheSize()
+        );
+
+        System.out.printf(
+                "DFS invocations : %d%n",
+                dfsInvocationCount
+        );
+
+        System.out.println(
+                "========================================"
+        );
+
+        System.out.println();
+
+
+    }
 }

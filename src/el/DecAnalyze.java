@@ -23,11 +23,87 @@ public final class DecAnalyze {
 
     private final ELAnalyze elAnalyze;
 
+    private long cacheHits = 0;
+
+    private long cacheMisses = 0;
+
+    /**
+     * Cache for Dec(C ⊑? D).
+     *
+     * Key:
+     *     (C, D)
+     *
+     * Value:
+     *     result of Dec(C ⊑? D)
+     */
+    private final Map<DecKey, DecResult> decCache =
+            new HashMap<>();
+    /**
+     * Unique key for one Dec(C ⊑? D) call.
+     */
+    private record DecKey(
+            ConceptPatternNode left,
+            ConceptPatternNode right
+    ) {
+    }
+
+
     public DecAnalyze(ELAnalyze elAnalyze) {
         this.elAnalyze = Objects.requireNonNull(
                 elAnalyze,
                 "elAnalyze cannot be null"
         );
+    }
+
+    public DecResult dec(
+            ConceptPatternNode c,
+            ConceptPatternNode d
+    ) {
+        /*
+         * Always validate the Dec input first.
+         */
+        validateInput(c, d);
+
+        /*
+         * Build the cache key:
+         *
+         *     Dec(C ⊑? D)
+         *
+         * is identified by the pair (C, D).
+         */
+        DecKey key =
+                new DecKey(c, d);
+
+        /*
+         * Check whether this Dec call has already
+         * been computed before.
+         */
+        DecResult cached =
+                decCache.get(key);
+
+        if (cached != null) {
+            cacheHits++;
+            return cached;
+        }
+
+        cacheMisses++;
+        /*
+         * Cache miss:
+         *
+         * Perform the real Dec computation.
+         */
+        DecResult result =
+                computeDec(c, d);
+
+        /*
+         * Store both successful and failed results.
+         */
+        decCache.put(
+                key,
+                result
+        );
+
+        return result;
     }
 
     /**
@@ -37,12 +113,12 @@ public final class DecAnalyze {
      * @param d the right pattern atom; must not be a variable
      * @return a successful or failed DecResult; never null
      */
-    public DecResult dec(ConceptPatternNode c, ConceptPatternNode d) {
+    public DecResult computeDec(ConceptPatternNode c, ConceptPatternNode d) {
         /*
          * Validate the paper-defined Dec input contract before
          * applying any of the six cases.
          */
-        validateInput(c, d);
+       // validateInput(c, d);
 
         /*
          * Case 1:
@@ -397,4 +473,25 @@ public final class DecAnalyze {
             );
         }
     }
+
+
+    public long getCacheHits() {
+        return cacheHits;
+    }
+
+    public long getCacheMisses() {
+        return cacheMisses;
+    }
+
+    public int getCacheSize() {
+        return decCache.size();
+    }
+
+    public void clearCache() {
+        decCache.clear();
+
+        cacheHits = 0;
+        cacheMisses = 0;
+    }
+
 }
