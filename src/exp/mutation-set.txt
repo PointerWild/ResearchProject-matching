@@ -1,0 +1,191 @@
+
+
+
+
+复杂的计算量：
+   ① A1,...,Ak 的组合
+           ↓
+   ② 每个 Aη 选择 Ci
+           ↓
+   ③ 得到大量 Gamma branch
+
+
+① Atom Set
+   ↓
+   subset pruning
+
+② Support Set
+   ↓
+   提前计算 Dec + cache
+
+③ Constraint Set
+   ↓
+   duplicate + subset pruning
+
+
+TBox Atoms
+    ↓
+Atom Set
+    ↓
+minimal premise sets
+    ↓
+Support Sets
+    ↓
+Delta Sets
+    ↓
+minimal delta family
+    ↓
+Gamma branches
+
+
+ConceptPatternNode immutable + canonicalization
+        ↓
+Dec cache
+        ↓
+Subsumption cache
+        ↓
+TBox atom set
+        ↓
+Set-based Mutation
+
+
+
+
+/*
+
+ * ================================================================
+ * Set-based Mutation Optimization
+ * ================================================================
+ *
+ * Original target:
+ *
+ *     C1 ∩ ... ∩ Cn  <=?  D
+ *
+ * ------------------------------------------------
+ * Phase 1: Build usable TBox atoms
+ * ------------------------------------------------
+ *
+ *     Atoms(T)
+ *         |
+ *         v
+ *     canonical Set
+ *         |
+ *         v
+ *     compute Support(A)
+ *
+ *     Support(A)
+ *       = { Ci | Dec(Ci,A) succeeds }
+ *
+ *         |
+ *         v
+ *
+ *     remove A if Support(A) = empty
+ *
+ *         |
+ *         v
+ *
+ *     SupportedAtoms
+ *
+ *
+ * ------------------------------------------------
+ * Phase 2: Search premise SETS
+ * ------------------------------------------------
+ *
+ *     choose B
+ *         |
+ *         v
+ *     Dec(B,D)
+ *
+ *      failure ------> reject B
+ *
+ *      success
+ *         |
+ *         v
+ *
+ *     search:
+ *
+ *         P subset-of SupportedAtoms
+ *
+ *     such that:
+ *
+ *         intersection(P) <=_T B
+ *
+ *
+ *     If P succeeds:
+ *
+ *         P
+ *         |
+ *         v
+ *       keep P
+ *         |
+ *         X
+ *
+ *     Do not search supersets of P.
+ *
+ *
+ *     If even the maximal extension fails:
+ *
+ *         intersection(P union Remaining) !<=_T B
+ *
+ *     then:
+ *
+ *         prune the whole subtree.
+ *
+ *
+ * ------------------------------------------------
+ * Phase 3: Generate branch constraint SETS
+ * ------------------------------------------------
+ *
+ *     P = {A1,...,Ak}
+ *
+ *          |
+ *          v
+ *
+ *     Support(A1) x ... x Support(Ak)
+ *
+ *          |
+ *          v
+ *
+ *     Dec-generated constraint sets
+ *
+ *          |
+ *          v
+ *
+ *     Delta1, Delta2, ...
+ *
+ *
+ * ------------------------------------------------
+ * Phase 4: Minimize branch SETS
+ * ------------------------------------------------
+ *
+ *     Delta1 = Delta2
+ *
+ *         -> remove duplicate
+ *
+ *
+ *     Delta1 subset Delta2
+ *
+ *         -> keep Delta1
+ *         -> remove Delta2
+ *
+ *
+ *          |
+ *          v
+ *
+ *     MinimalDeltaFamily
+ *
+ *
+ * ------------------------------------------------
+ * Phase 5: DFS
+ * ------------------------------------------------
+ *
+ *     one minimal Delta
+ *          |
+ *          v
+ *     one Gamma branch
+ *          |
+ *          v
+ *         DFS
+ *
+ * ================================================================
+ */

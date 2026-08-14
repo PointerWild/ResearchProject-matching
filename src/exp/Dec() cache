@@ -1,0 +1,15 @@
+
+
+ * DecompositionRule ─┐
+ *                    │
+ * MutationRule ──────┼──> DecAnalyze.dec()
+ *                    │          │
+ *                    │          ↓
+ *                    │       Cache
+ *                    │       /   \
+ *                    │     HIT   MISS
+ *                    │      │      │
+ *                    │      │      ↓
+ *                    │      │   real-compute
+ *                    │      │      │
+ *                    └──────┴──────┘

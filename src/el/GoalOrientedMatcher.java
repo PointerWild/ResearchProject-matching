@@ -7,6 +7,8 @@ import java.util.*;
 import java.util.function.BiFunction;
 import java.util.AbstractMap.SimpleEntry;
 
+import el.setbasedmutation.SetBasedMutationRule;
+
 /**
  * Implements Algorithm 5.1: goal‐oriented matching by
  * 1) 尽可能地应用 eager 规则
@@ -189,7 +191,12 @@ public class GoalOrientedMatcher {
          * Each complete branch is immediately sent to dfs().
          * The first successful branch stops the search.
          */
-        boolean mutationSucceeded = MutationRule.tryBranches(sp, gamma, decAnalyze, elAnalyze, this::dfs);
+
+        //boolean mutationSucceeded = MutationRule.tryBranches(sp, gamma, decAnalyze, elAnalyze, this::dfs);
+
+        //try  SetBasedMutationRule
+        boolean mutationSucceeded = SetBasedMutationRule.tryBranches( sp, gamma, decAnalyze, elAnalyze, this::dfs);
+
         if (mutationSucceeded) {
             return true;
         }

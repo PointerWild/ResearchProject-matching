@@ -1,0 +1,50 @@
+
+Optimization 2A — Canonical Concept Normalization
+Optimization 2B — Efficient Gamma Deduplication
+
+                  Original Gamma
+                       │
+                       ▼
+              Validate matching form
+                       │
+                       ▼
+            Canonicalize left / right
+                       │
+             ┌─────────┴─────────┐
+             ▼                   ▼
+           flatten             recurse
+             │                   │
+             ▼                   ▼
+         remove Tau         existential filler
+             │
+             ▼
+        remove duplicates
+             │
+             ▼
+             sort
+             │
+             ▼
+         canonical AST （AST 是 Abstract Syntax Tree -- ConceptPatternNode）
+             │
+             ▼
+          RHS splitting
+             │
+             ▼
+      ground-ground checking
+             │
+             ▼
+       Gamma deduplication
+             │
+             ▼
+        Normalized Gamma
+             │
+             ▼
+         Algorithm 5.1
+             │
+      ┌──────┴────────┐
+      ▼               ▼
+Decomposition       Mutation
+      │               │
+      └──────┬────────┘
+             ▼
+          Dec Cache
